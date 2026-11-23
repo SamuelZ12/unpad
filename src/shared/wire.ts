@@ -68,7 +68,7 @@ function isLogEvent(value: unknown): value is LogEvent {
       return isCacheKey(value.cacheKey) && isSentenceId(value.sentenceId)
         && typeof value.text === "string";
     case "reveal":
-      return isCount(value.heldMs);
+      return typeof value.heldMs === "number" && Number.isFinite(value.heldMs) && value.heldMs >= 0;
     default:
       return false;
   }

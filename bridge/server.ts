@@ -1,11 +1,12 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { CacheKey, Selection } from "../src/shared/types";
-import { parseSelectRequest } from "../src/shared/wire";
+import { parseEventsRequest, parseSelectRequest } from "../src/shared/wire";
 import type { SelectRequest } from "../src/shared/wire";
 import { cacheKeyFor, readCache, writeCache } from "./cache";
 import { loadConfig } from "./config";
 import type { BridgeConfig } from "./config";
+import { createEventLog } from "./events";
 import { runPi, select } from "./selector";
 import type { PiSpawn } from "./selector";
 
@@ -23,6 +24,7 @@ interface RequestLog {
 export async function startBridge(config: BridgeConfig, spawn?: PiSpawn) {
   await mkdir(join(config.dataDir, "cache"), { recursive: true, mode: 0o700 });
   const logPath = join(config.dataDir, "requests.jsonl");
+  const appendEvents = createEventLog(config.dataDir);
   const inFlight = new Map<CacheKey, Promise<Selection>>();
 
   async function pick(doc: SelectRequest, cacheKey: CacheKey, log: RequestLog): Promise<Selection> {
@@ -93,6 +95,18 @@ export async function startBridge(config: BridgeConfig, spawn?: PiSpawn) {
             return Response.json({ cacheKey, selection });
           } catch (error) {
             return fail(502, error instanceof Error ? error.message : "Selection failed");
+          }
+        }
+
+        if (request.method === "POST" && path === "/events") {
+          const body = parseEventsRequest(await request.json().catch(() => undefined));
+          if (!body) return fail(400, "Invalid events request");
+          try {
+            await appendEvents(body.events);
+            log.result = "accepted";
+            return Response.json({ accepted: body.events.length });
+          } catch {
+            return fail(500, "Could not append events");
           }
         }
 
