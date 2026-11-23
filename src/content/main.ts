@@ -2,6 +2,7 @@ import { fadedIds, reduce, view, type PageEvent, type PageState } from "../core/
 import type { Doc } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse } from "../shared/wire";
 import { extract, type AnchoredDoc } from "./anchor";
+import { listenForHold } from "./hold";
 import { listenForToggle } from "./keys";
 import { createPainter } from "./paint";
 
@@ -69,6 +70,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
 listenForToggle(() => {
   void chrome.runtime.sendMessage({ type: "toggle" }).catch(console.warn);
 });
+
+listenForHold(
+  () => dispatch({ type: "hold-start" }),
+  () => dispatch({ type: "hold-end" }),
+);
 
 void chrome.storage.local.get("lensOn").then(({ lensOn }) => {
   if (!lensChanges) dispatch({ type: "lens-set", on: lensOn !== false });
