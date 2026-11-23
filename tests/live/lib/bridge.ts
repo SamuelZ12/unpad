@@ -20,7 +20,24 @@ interface RequestLog {
 
 export async function testBridge() {
   const data = await mkdtemp("/tmp/filler-bridge-");
-  const config = await loadConfig();
+  const previous = process.env.FILLER_CUT_DATA;
+  process.env.FILLER_CUT_DATA = data;
+  const config = await loadConfig().finally(() => {
+    if (previous === undefined) delete process.env.FILLER_CUT_DATA;
+    else process.env.FILLER_CUT_DATA = previous;
+  });
+  const cache = join(data, "cache");
+  const history = join(data, "cache-history");
+  await mkdir(cache, { recursive: true });
+  if (process.env.FILLER_CUT_VERIFY_CACHE) {
+    await cp(process.env.FILLER_CUT_VERIFY_CACHE, cache, { recursive: true });
+  }
+  async function archive() {
+    await cp(cache, history, { recursive: true });
+  }
+  async function warmCache() {
+    await cp(history, cache, { recursive: true, force: false });
+  }
   let server: Awaited<ReturnType<typeof startBridge>> | undefined;
   async function start(invalid = false) {
     if (server) throw new Error("Test bridge already started");
@@ -40,10 +57,9 @@ export async function testBridge() {
     return (await file.text()).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
   }
   return {
-    start, stop, data,
+    start, stop, data, archive, warmCache,
     clear: async () => {
-      const cache = join(data, "cache");
-      await mkdir(cache, { recursive: true });
+      await archive();
       for (const name of await readdir(cache)) await rm(join(cache, name));
     },
     requests: async () => (await lines<RequestLog>("requests.jsonl")).filter((row) => row.path === "/select"),

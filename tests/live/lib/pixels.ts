@@ -23,9 +23,14 @@ export function difference(a: PNG, b: PNG) {
   return changed;
 }
 
+export async function screenshotBytes(page: Page) {
+  const bytes = await page.screenshot({ scale: "css", timeout: 8000 });
+  return { at: Date.now(), bytes };
+}
+
 export async function screenshot(page: Page) {
-  const png = PNG.sync.read(await page.screenshot({ scale: "css", timeout: 8000 }));
-  return { at: Date.now(), png };
+  const { at, bytes } = await screenshotBytes(page);
+  return { at, png: PNG.sync.read(bytes) };
 }
 
 export async function docCrop(root: Locator) {

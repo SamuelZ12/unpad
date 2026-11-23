@@ -23,7 +23,7 @@ const fixtures = {
 export async function fixture(name: Exclude<Reference, "warp">) {
   const article = await Bun.file("tests/fixtures/x/" + fixtures[name]).text();
   return `<!doctype html><meta charset=utf-8><style>
-    body { font: 17px/1.5 system-ui; margin: 24px auto; width: 620px }
+    body { font: 17px/1.5 system-ui; margin: 24px auto; width: 620px; color: #e7e9ea; background: #000 }
     img, svg, video, button { display: none } [data-block] { margin: 12px 0 }
     [data-testid=tweetText] { white-space: pre-wrap }
     [data-testid=twitter-article-title] { font-size: 28px; font-weight: bold }

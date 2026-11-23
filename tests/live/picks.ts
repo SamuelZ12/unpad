@@ -9,6 +9,9 @@ export default async function picks(context: CheckContext) {
   await bridge.start();
   try {
     return await withBrowser(context, async (browser, page) => {
+      const worker = browser.context.serviceWorkers()[0] ??
+        await browser.context.waitForEvent("serviceworker", { timeout: 5000 });
+      await worker.evaluate(() => chrome.storage.local.set({ lensOn: false }));
       const results = [];
       for (const name of ["wang", "perfloop", "warp"] as const) {
         const index = (await bridge.requests()).length;

@@ -6,10 +6,18 @@ import { bridgeUrl, testBridge } from "./lib/bridge";
 import load from "./load";
 import extract from "./extract";
 
+import S1 from "./S1";
+import S2 from "./S2";
+import S3 from "./S3";
+import S4 from "./S4";
 import S5 from "./S5";
-import picks from "./picks";
+import S6 from "./S6";
+import S16 from "./S16";
 
-const checks = { load, extract, S5, picks };
+import picks from "./picks";
+import dark from "./dark";
+
+const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
@@ -42,6 +50,8 @@ try {
       process.exitCode = 1;
       message = `FAIL ${id} [${mode}] ${error}`;
     }
+    await bridge.archive();
+    await bridge.warmCache();
     reports.push(message);
     console.log(message);
     await Bun.write(join(evidence, "results.log"), reports.join("\n") + "\n");

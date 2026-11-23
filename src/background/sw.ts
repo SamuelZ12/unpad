@@ -24,7 +24,17 @@ export async function selectDoc(body: unknown, fetcher: (input: URL, init: Reque
 }
 
 if (typeof chrome !== "undefined") {
+  let toggles = Promise.resolve();
   chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+    if (message?.type === "toggle") {
+      const write = toggles.then(async () => {
+        const { lensOn } = await chrome.storage.local.get("lensOn");
+        await chrome.storage.local.set({ lensOn: lensOn === false });
+      });
+      toggles = write.catch(console.warn);
+      void write.then(() => reply(true), () => reply(false));
+      return true;
+    }
     if (message?.type !== "select") return;
     void selectDoc(message.doc).then(reply);
     return true;
