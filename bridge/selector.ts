@@ -95,10 +95,11 @@ export async function select(
   const title = doc.title ? `Title: ${doc.title.replace(/\s+/g, " ")}\n` : "";
   const sentences = doc.sentences.map((sentence, i) => `${i + 1}: ${sentence}\n`).join("");
   const prompt = `${base}${rules}\n${title}SOURCE:\n${sentences}`;
+  let raw = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = await ask(prompt);
+    raw = await ask(prompt);
     const selection = parseSelection(raw, doc.sentences.length);
     if (selection) return { selection, raw };
   }
-  throw new Error("Pi returned an invalid selection twice");
+  throw new Error(`Pi returned an invalid selection twice: ${JSON.stringify(raw.slice(0, 300))}`);
 }
