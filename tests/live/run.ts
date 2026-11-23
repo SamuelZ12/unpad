@@ -6,7 +6,10 @@ import { bridgeUrl, testBridge } from "./lib/bridge";
 import load from "./load";
 import extract from "./extract";
 
-const checks = { load, extract };
+import S5 from "./S5";
+import picks from "./picks";
+
+const checks = { load, extract, S5, picks };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
