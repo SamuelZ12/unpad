@@ -16,7 +16,10 @@ await Bun.build({
   naming: "[name].js",
   target: "browser",
   format: "iife",
-  define: { "process.env.BRIDGE_URL": JSON.stringify(BRIDGE_URL) },
+  define: {
+    "process.env.BRIDGE_URL": JSON.stringify(BRIDGE_URL),
+    "process.env.FILLER_CUT_DEV": JSON.stringify(process.env.FILLER_CUT_DEV ?? "0"),
+  },
 });
 
 await Bun.write(`${outdir}/manifest.json`, JSON.stringify({

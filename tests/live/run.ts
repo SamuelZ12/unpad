@@ -4,8 +4,9 @@ import { join } from "node:path";
 import type { Mode } from "./lib/browser";
 import { bridgeUrl, testBridge } from "./lib/bridge";
 import load from "./load";
+import extract from "./extract";
 
-const checks = { load };
+const checks = { load, extract };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
