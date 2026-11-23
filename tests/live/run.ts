@@ -13,13 +13,16 @@ import S4 from "./S4";
 import S5 from "./S5";
 import S6 from "./S6";
 import S7 from "./S7";
+import S8 from "./S8";
+import S9 from "./S9";
+import S15 from "./S15";
 import S14 from "./S14";
 import S16 from "./S16";
 
 import picks from "./picks";
 import dark from "./dark";
 
-const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark, S7, S14 };
+const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark, S7, S14, S8, S9, S15 };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;

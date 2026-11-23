@@ -1,5 +1,7 @@
 import { BRIDGE_URL } from "../shared/config";
-import { parseErrorResponse, parseSelectRequest, parseSelectResponse } from "../shared/wire";
+import { parseErrorResponse, parseEventsRequest, parseSelectRequest, parseSelectResponse } from "../shared/wire";
+
+import { chromeEventQueue } from "./events";
 
 export async function selectDoc(body: unknown, fetcher: (input: URL, init: RequestInit) => Promise<Response> = fetch) {
   const request = parseSelectRequest(body);
@@ -25,6 +27,7 @@ export async function selectDoc(body: unknown, fetcher: (input: URL, init: Reque
 
 if (typeof chrome !== "undefined") {
   let toggles = Promise.resolve();
+  const queueEvents = chromeEventQueue();
   chrome.runtime.onMessage.addListener((message, _sender, reply) => {
     if (message?.type === "toggle") {
       const write = toggles.then(async () => {
@@ -33,6 +36,12 @@ if (typeof chrome !== "undefined") {
       });
       toggles = write.catch(console.warn);
       void write.then(() => reply(true), () => reply(false));
+      return true;
+    }
+    if (message?.type === "events") {
+      const request = parseEventsRequest(message);
+      if (!request?.events.length) return;
+      void queueEvents(request.events).then(() => reply(true), () => reply(false));
       return true;
     }
     if (message?.type !== "select") return;

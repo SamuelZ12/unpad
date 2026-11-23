@@ -105,6 +105,13 @@ export function createPainter() {
 
   return function paint(docs: readonly AnchoredDoc[], state: PageState, animate = true) {
     const ranges = fadedRanges(docs, state);
+    // Restoring one sentence should only invalidate the pixels of that range.
+    if (!animate && ranges.length && ranges.length < active.length && ranges.every((range) => highlight.has(range))) {
+      const remaining = new Set(ranges);
+      for (const range of active) if (!remaining.has(range)) highlight.delete(range);
+      active = ranges;
+      return;
+    }
     if (ranges.length) {
       updateStyles(ranges);
       highlight.clear();
