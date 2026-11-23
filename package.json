@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "bridge": "bun bridge/server.ts",
     "build": "bun scripts/build.ts",
     "check": "tsc --noEmit && bun test"
   },

@@ -1,0 +1,15 @@
+{
+  "title": "",
+  "sentences": [
+    "Perfloop is past 150 changes merged into open source.",
+    "155 today, in 36 projects.",
+    "The first 50 took 88 days.",
+    "The next 50 took 42.",
+    "The last 50 took 20.",
+    "It started with performance.",
+    "In October we began hunting bugs too.",
+    "Half the record is bug fixes now.",
+    "Go, Postgres, Redis and Elasticsearch are in there.",
+    "Every one links to its merge."
+  ]
+}
