@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
+import { maxMarks } from "../../src/shared/config";
 import { state } from "./lib/browser";
 import { toggle, waitForState, withBrowser } from "./lib/check";
 import { cacheEntry, withBridge } from "./lib/fade";
@@ -24,7 +25,7 @@ export default async function S17(context: CheckContext) {
     const entry = await cacheEntry(context, response.cacheKey);
     const paint = await painted(page);
     const marks = assertMarkedSelection(entry, paint);
-    assert.ok(marks.length <= 3 && paint.faded >= 3);
+    assert.ok(paint.faded >= 3);
     const initial = await shot(true);
     await save(context.evidence + "/wang-fades-and-marks", initial);
     const layout = await geometry(page);
@@ -84,6 +85,6 @@ export default async function S17(context: CheckContext) {
     assert.deepEqual(await painted(page), untouched);
     assert.equal(difference(before, await docCrop(perfloop)), 0);
     assert.equal((await state(page)).faded, 0);
-    return `Wang ${marks.length}/3 marks and ${paint.faded} fades, 0 overlaps; ${background.join("/")} tinted background pixels per mark, ${titlePixels} changed title/byline pixels; Shift and lens off 0 marks/fades, release restores both; click leaves ${marks.length - 1} marks and ${paint.faded} fades, 1 unmark event; Perfloop 10 sentences, 0 marks/fades or changed pixels`;
+    return `Wang ${entry.sentences.length} sentences, ${marks.length}/${maxMarks(entry.sentences.length)} marks and ${paint.faded} fades, 0 overlaps; ${background.join("/")} tinted background pixels per mark, ${titlePixels} changed title/byline pixels; Shift and lens off 0 marks/fades, release restores both; click leaves ${marks.length - 1} marks and ${paint.faded} fades, 1 unmark event; Perfloop 10 sentences, 0 marks/fades or changed pixels`;
   }, true, { width: 1280, height: 3700 }));
 }

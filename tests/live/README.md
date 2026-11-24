@@ -15,7 +15,7 @@ Hold Shift alone for 200 ms to see the original until release. Click a faded sen
 - **Lens.** The on or off setting. Site mode shares it across tabs and starts on. Page mode keeps its own setting for the current document.
 - **Faded.** A sentence drawn in its own text colour at 40% alpha. Its text and layout stay the same.
 - **Restored.** A faded sentence that the reader clicked. It stays at full strength for that page view.
-- **Marked.** A kept sentence with a yellow background tint. Documents with at least 20 sentences can show up to one mark per ten sentences, rounded up. A keep-all selection can carry marks.
+- **Marked.** A key sentence with a yellow background tint that stays at full contrast. The marked sentences are picked to summarize the piece for the reader described in the reader-rules file. Documents with at least 20 sentences can show up to twice the square root of the sentence count, rounded up. A keep-all selection can carry marks.
 - **Untouched.** A screenshot crop of the doc matches the original crop from the same page load. Capture the original before picks arrive or with the lens off.
 
 ## Checks
@@ -43,7 +43,7 @@ Run `bun run verify all` for the numbered checks or pass individual IDs. The def
 | [S14](S14.ts) | The lens and reveal keys leave typing alone. | All |
 | [S15](S15.ts) | Links in faded text still work and produce no restore. | All |
 | [S16](S16.ts) | Warp fades from the cache within 1 s after its text is in the DOM. | All |
-| [S17](S17.ts) | Wang shows 1–3 marked sentences with tinted background pixels, no overlapping fades, and an unchanged title. Shift and the lens hide both kinds of paint. Clicking one mark removes it and logs one unmark. Perfloop shows neither marks nor fades. | All |
+| [S17](S17.ts) | Wang shows at least one marked sentence within the cap, with tinted background pixels, no overlapping fades, and an unchanged title. Shift and the lens hide both kinds of paint. Clicking one mark removes it and logs one unmark. Perfloop shows neither marks nor fades. | All |
 | [S18](S18.ts) | Warp shows marks within the cap and zero overlap with the fades. | All |
 
 The reference pages are the [Wang X Article](https://x.com/alexandr_wang/status/2124636606959345776), the [Perfloop X post](https://x.com/tsenart/status/2123483102936785334), and the [Warp article](https://claude.com/blog/how-warp-builds-self-improving-agents-on-claude). Warp's `/blog/` URL redirects to `/resources/articles/`.
@@ -62,7 +62,7 @@ The reference pages are the [Wang X Article](https://x.com/alexandr_wang/status/
 - Chrome's `_execute_action` shortcut and the toolbar icon invoke the same action. The content script toggles from a page key only when the action has no assigned shortcut. Shift reveal still uses the page's key-down and key-up events. Chromium's synthetic Playwright keys reach the page and invoke the Chrome action zero times.
 - An OS-level Alt+Shift+F sent through X11 on Linux Chromium 156 invoked the action once. The page received the modifier events and zero `KeyF` events. macOS Chromium 159 reported an assigned Option+Shift+F shortcut. The macOS login window prevented the OS-level key probe from reaching Chromium.
 - S12-page-mode uses Chromium's `Extensions.triggerAction`. S12-added-site and S12-page-check pre-approve each exact origin in Chrome's extension settings, then route a CDP toolbar gesture to the same handler as the toolbar menu. The checks exercise the real permission request, grant, registration, and menu update calls. Native menu rendering and clicks, Chrome's permission prompt and its buttons, and a physical shortcut require native browser input.
-- The bridge receives docs with 6 to 1,500 sentences. If picks would fade fewer than 3, it keeps everything so dense posts stay readable. In 5 prototype runs per page, Perfloop would have faded 0 to 1 of 10 sentences and Wang 4 to 7 of 29. The later Wang markup yielded 28 sentences.
-- The bridge cache is keyed by doc, selector version, reader-rules version, and the check URL when present. Key-enabled requests use a separate selector version that includes the key prompt and mark limits. Eligible cold requests run the two Pi calls in parallel. The bridge discards invalid key answers and keeps only key IDs that survived the keep selection. A SKIP verdict carries an empty key array. Legacy requests retain their original cache and one-call selector behavior.
+- The bridge receives docs with 6 to 1,500 sentences. If the initial keep picks would fade fewer than 3 sentences, it keeps everything so dense posts stay readable. In 5 prototype runs per page, Perfloop would have faded 0 to 1 of 10 sentences and Wang 4 to 7 of 29. The later Wang markup yielded 28 sentences.
+- The bridge cache is keyed by doc, selector version, reader-rules version, and the check URL when present. Key-enabled requests use a separate selector version that includes the key prompt and mark limits. Eligible cold requests run the two Pi calls in parallel. The bridge discards invalid key answers, caps valid answers in priority order, and adds the capped key IDs to the keep selection. If that leaves zero fades, the result is keep-all. A SKIP verdict carries an empty key array. Legacy requests use a separate cache version and one Pi call.
 
 The measurement setup and raw paths are in `~/.pi/agent/filler-cut/v0-plan-proto/FINDINGS.md`.
