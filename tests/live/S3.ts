@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { state } from "./lib/browser";
 import { waitForState, withBrowser } from "./lib/check";
-import { withBridge } from "./lib/fade";
+import { withBridge } from "./lib/cut";
 import { difference, docCrop, save } from "./lib/pixels";
 
 export default async function S3(context: CheckContext) {

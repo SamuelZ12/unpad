@@ -3,10 +3,8 @@ import { join } from "node:path";
 import type { CheckContext } from "./run";
 import { launch, state } from "./lib/browser";
 import { waitForState } from "./lib/check";
-import { cacheEntry, pickedFades, withBridge } from "./lib/fade";
-import { installGeometry } from "./lib/geometry";
+import { cacheEntry, expandRun, withBridge } from "./lib/cut";
 import { poll } from "./lib/pixels";
-import { findClick } from "./lib/restore";
 
 export default async function demo(context: CheckContext) {
   const { bridge, evidence, mode } = context;
@@ -15,12 +13,11 @@ export default async function demo(context: CheckContext) {
     const page = browser.context.pages()[0];
     let recording: string;
     try {
-      await installGeometry(browser.context);
-      await browser.open(page, "wang");
+      const root = await browser.open(page, "wang");
       const faded = await waitForState(page, "faded");
       await page.evaluate(() => document.fonts.ready);
       const { cacheKey } = await bridge.waitForRequest(0);
-      const point = await findClick(page, pickedFades(await cacheEntry(context, cacheKey)), 2);
+      const entry = await cacheEntry(context, cacheKey);
       recording = await page.video()!.path();
 
       await Bun.sleep(2000);
@@ -28,8 +25,8 @@ export default async function demo(context: CheckContext) {
       await Bun.sleep(2000);
       await page.keyboard.up("Shift");
       await Bun.sleep(1000);
-      await page.mouse.click(point.x, point.y);
-      await poll(() => state(page), (value) => value.faded === faded.faded - 1, 1000);
+      const { group } = await expandRun(root, entry);
+      await poll(() => state(page), (value) => value.faded === faded.faded - group.length, 1000);
       await Bun.sleep(2000);
     } finally {
       await browser.close();

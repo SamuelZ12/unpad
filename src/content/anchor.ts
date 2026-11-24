@@ -2,51 +2,76 @@ import { segment } from "../core/segment";
 import { MAX_SENTENCES, MIN_SENTENCES } from "../shared/config";
 import { docKey } from "../shared/keys";
 import type { Doc } from "../shared/types";
-import { surfaces } from "./surfaces";
+import { surfaces, textWalker, type ReadText } from "./surfaces";
+
+export interface TextSlice {
+  readonly node: Text;
+  readonly start: number;
+  readonly end: number;
+}
+
+export interface SentenceAnchor {
+  readonly block: Element;
+  readonly slices: readonly TextSlice[];
+}
 
 export interface AnchoredDoc {
   readonly doc: Doc;
   readonly root: Element;
-  readonly ranges: readonly Range[];
+  readonly sentences: readonly SentenceAnchor[];
 }
 
-function anchor(block: Element, textWalker?: (block: Element) => TreeWalker) {
-  const document = block.ownerDocument;
-  const walker = textWalker?.(block) ?? document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  const nodes: { node: Text; offset: number }[] = [];
+export type LocateText = (slice: TextSlice) => TextSlice | undefined;
+
+export function rangeOf({ slices }: SentenceAnchor, locate: LocateText = (slice) => slice) {
+  const first = locate(slices[0]);
+  const last = locate(slices.at(-1)!);
+  if (!first?.node.isConnected || !last?.node.isConnected) return;
+  const range = first.node.ownerDocument.createRange();
+  range.setStart(first.node, first.start);
+  range.setEnd(last.node, last.end);
+  return range;
+}
+
+function anchor(block: Element, generic: boolean, read: ReadText) {
+  const walker = textWalker(block, generic);
+  const nodes: { node: Text; offset: number; length: number }[] = [];
   let text = "";
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    // A <br> from the generic walker ends a sentence. The newline is whitespace, so no range starts or ends on it.
     if (!(node instanceof Text)) {
       text += "\n";
       continue;
     }
-    if (!node.length) continue;
-    nodes.push({ node, offset: text.length });
-    // Generic pages hard-wrap their source. HTML renders those newlines as spaces.
-    text += textWalker ? node.data.replace(/[\n\r\f]/gu, " ") : node.data;
+    const data = read(node);
+    if (!data.length) continue;
+    nodes.push({ node, offset: text.length, length: data.length });
+    text += generic ? data.replace(/[\n\r\f]/gu, " ") : data;
   }
 
   let cursor = 0;
   return segment(text).map(({ start, end, text }) => {
     while (nodes[cursor + 1]?.offset <= start) cursor++;
-    const first = nodes[cursor];
-    while (nodes[cursor + 1]?.offset < end) cursor++;
-    const last = nodes[cursor];
-    const range = document.createRange();
-    range.setStart(first.node, start - first.offset);
-    range.setEnd(last.node, end - last.offset);
-    return { range, text };
+    const slices: TextSlice[] = [];
+    for (; cursor < nodes.length; cursor++) {
+      const { node, offset, length } = nodes[cursor];
+      const from = Math.max(start - offset, 0);
+      const to = Math.min(end - offset, length);
+      if (to > from) slices.push({ node, start: from, end: to });
+      if (!nodes[cursor + 1] || nodes[cursor + 1].offset >= end) break;
+    }
+    return { sentence: { block, slices }, text };
   });
 }
 
-export async function extract(document: Document, url: URL, checkArticle = false): Promise<AnchoredDoc[]> {
-  const docs = surfaces(document, url, checkArticle).map(async ({ root, surface, title, blocks, textWalker }) => {
-    const spans = blocks.flatMap((block) => anchor(block, textWalker));
+export async function extract(
+  document: Document, url: URL, checkArticle = false, read: ReadText = (node) => node.data,
+): Promise<AnchoredDoc[]> {
+  const docs = surfaces(document, url, checkArticle, read).map(async ({ root, surface, title, blocks, generic }) => {
+    const spans = blocks.flatMap((block) => anchor(block, !!generic, read));
     if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
     const sentences = spans.map(({ text }) => text);
     const key = await docKey(title, sentences);
-    return { root, doc: { key, surface, title, sentences }, ranges: spans.map(({ range }) => range) };
+    return { root, doc: { key, surface, title, sentences }, sentences: spans.map(({ sentence }) => sentence) };
   });
   return (await Promise.all(docs)).filter((doc): doc is NonNullable<typeof doc> => !!doc);
 }

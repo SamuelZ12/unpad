@@ -30,10 +30,10 @@ import S17 from "./S17";
 import S18 from "./S18";
 
 import picks from "./picks";
-import dark from "./dark";
+import S19 from "./S19";
 
-const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark, S7, S14, S8, S9, S15, S10, S11, S12,
-  "S12-page-mode": S12PageMode, "S12-added-site": S12AddedSite, "S12-page-check": S12PageCheck, S13, S17, S18 };
+const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, S7, S14, S8, S9, S15, S10, S11, S12,
+  "S12-page-mode": S12PageMode, "S12-added-site": S12AddedSite, "S12-page-check": S12PageCheck, S13, S17, S18, S19 };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
@@ -61,8 +61,15 @@ async function runChecks() {
   if (mode === "logged-in") {
     try {
       const browser = await launch(mode);
-      try { await browser.open(browser.context.pages()[0], "wang"); }
-      finally { await browser.close(); }
+      const page = browser.context.pages()[0];
+      try {
+        await browser.open(page, "wang");
+      } catch (error) {
+        await page.screenshot({ path: join(evidence, "signed-in-preflight.png") }).catch(() => {});
+        throw error;
+      } finally {
+        await browser.close();
+      }
     } catch (error) {
       accountError = error;
     }
@@ -73,7 +80,9 @@ async function runChecks() {
     const directory = join(evidence, id);
     await mkdir(directory);
     const check = checks[id as keyof typeof checks];
-    const actualMode = id.startsWith("S12") ? "logged-out" : id === "S10" && mode === "logged-out" ? "replay" : mode;
+    const freshProfile = id.startsWith("S12") || id === "S19"
+      || (mode === "logged-in" && ["S4", "S14", "S15", "S16", "S18"].includes(id));
+    const actualMode = freshProfile ? "logged-out" : id === "S10" && mode === "logged-out" ? "replay" : mode;
     let message: string;
     try {
       if (accountError && actualMode === "logged-in") throw accountError;

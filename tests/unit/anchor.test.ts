@@ -35,10 +35,10 @@ test("every captured document has ranges matching its sentences", async () => {
         : route.abort());
       await page.goto(url);
       const docs = await page.evaluate(async (source) => {
-        const { extract } = await import(source) as typeof import("../../src/content/anchor");
-        return (await extract(document, new URL(location.href))).map(({ doc, ranges }) => ({
+        const { extract, rangeOf } = await import(source) as typeof import("../../src/content/anchor");
+        return (await extract(document, new URL(location.href))).map(({ doc, sentences }) => ({
           surface: doc.surface, sentences: doc.sentences,
-          ranges: ranges.map((range) => range.toString().replace(/\s+/gu, " ").trim()),
+          ranges: sentences.map((sentence) => rangeOf(sentence)!.toString().replace(/\s+/gu, " ").trim()),
         }));
       }, module);
       expect(docs.map((doc) => doc.surface)).toEqual([surface]);
@@ -83,10 +83,10 @@ test("a page of bare text split by <br> yields one document of whole sentences",
       : route.abort());
     await page.goto("https://paulgraham.com/jessica.html");
     const docs = await page.evaluate(async (source) => {
-      const { extract } = await import(source) as typeof import("../../src/content/anchor");
-      return (await extract(document, new URL(location.href))).map(({ doc, ranges }) => ({
+      const { extract, rangeOf } = await import(source) as typeof import("../../src/content/anchor");
+      return (await extract(document, new URL(location.href))).map(({ doc, sentences }) => ({
         surface: doc.surface, title: doc.title, sentences: doc.sentences,
-        ranges: ranges.map((range) => range.toString().replace(/\s+/gu, " ").trim()),
+        ranges: sentences.map((sentence) => rangeOf(sentence)!.toString().replace(/\s+/gu, " ").trim()),
       }));
     }, module);
     expect(docs.map(({ surface, title }) => [surface, title])).toEqual([["blog", "Jessica Livingston"]]);
@@ -95,5 +95,73 @@ test("a page of bare text split by <br> yields one document of whole sentences",
     expect(docs[0].sentences).toContain('A few months ago an article about Y Combinator said that early on it had been a "one-man show."');
     expect(docs[0].sentences).toContain("So let me tell you a little about Jessica.");
     expect(docs[0].sentences).toContain("YC had 4 founders.");
+  });
+}, 15_000);
+
+test("whole removed paragraphs share one marker and leave their source nodes in place", async () => {
+  const build = await Bun.build({ entrypoints: ["src/content/reconcile.ts"], target: "browser", define: { "process.env.BRIDGE_URL": '""' } });
+  const projectionModule = "data:text/javascript," + encodeURIComponent(await build.outputs[0].text());
+  await withExtraction(async (page, module) => {
+    await page.route("https://example.com/article", (route) => route.fulfill({
+      contentType: "text/html", body: "<!doctype html><main></main>",
+    }));
+    await page.goto("https://example.com/article");
+    const results = await page.evaluate(async ({ module, projectionModule }) => {
+      const { extract } = await import(module) as typeof import("../../src/content/anchor");
+      const { createProjection } = await import(projectionModule) as typeof import("../../src/content/reconcile");
+      const paragraphs = [
+        "Visible opening sentence.",
+        "A hidden paragraph starts here. More filler follows here.",
+        "Another filler paragraph here.",
+        "Visible closing sentence. Another line stays here. The final words stay here.",
+      ];
+      const main = document.querySelector("main")!;
+      const readings = [];
+      for (const html of [
+        paragraphs.map((text) => '<p>' + text + '</p>').join(""),
+        "<font>" + paragraphs.join("<br><br>") + "</font>",
+      ]) {
+        main.innerHTML = html;
+        const projection = createProjection(() => {});
+        const [anchored] = await extract(document, new URL(location.href));
+        const text = anchored.sentences[3].slices[0].node;
+        const parent = text.parentNode!;
+        const visible = anchored.doc.sentences.filter((_, i) => [0, 4, 5, 6].includes(i)).join(" ");
+        const docState = {
+          doc: anchored.doc, restored: new Set(), unmarked: new Set(),
+          picks: { kind: "ready", cacheKey: "cache", selection: { kind: "keep", keep: [1, 5, 6, 7] }, key: [1, 5] },
+        } as unknown as import("../../src/core/state").DocState;
+        const state = { lensOn: true, holding: false, docs: new Map([[anchored.doc.key, docState]]) };
+        projection.reconcile([anchored], state);
+        const [rebuilt] = await extract(document, new URL(location.href), false, projection.read);
+        const marker = main.querySelector("[data-filler-cut-marker]");
+        const cutContent = main.innerText.replace("···", "").replace(/\s+/gu, " ").trim();
+        const children = [...main.querySelectorAll("p, br")].filter((node) => node.getClientRects().length > 0);
+        projection.reconcile([rebuilt], state);
+
+        readings.push({
+          visible: cutContent === visible,
+          count: main.querySelectorAll("[data-filler-cut-marker]").length,
+          stable: main.querySelector("[data-filler-cut-marker]") === marker && rebuilt.doc.key === anchored.doc.key,
+          surviving: children.length,
+          sameParent: text.parentNode === parent,
+        });
+
+        // A framework can replace its text child while the cut is active.
+        const next = document.createTextNode(paragraphs[2]);
+        parent.insertBefore(next, text);
+        parent.removeChild(text);
+        const docs = await extract(document, new URL(location.href), false, projection.read);
+        projection.reconcile(docs, { ...state, lensOn: false });
+        readings.push({ exactOriginal: main.innerHTML === html, replacement: next.parentNode === parent });
+      }
+      return readings;
+    }, { module, projectionModule });
+    expect(results).toEqual([
+      { visible: true, count: 1, stable: true, surviving: 3, sameParent: true },
+      { exactOriginal: true, replacement: true },
+      { visible: true, count: 1, stable: true, surviving: 4, sameParent: true },
+      { exactOriginal: true, replacement: true },
+    ]);
   });
 }, 15_000);

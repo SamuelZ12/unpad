@@ -1,16 +1,21 @@
-// Open the Warp /blog/ URL with the lens on and an empty cache. Within 1000 ms
-// of the bridge response, at least 8 prose sentences are faded. Headings, tables,
-// code blocks, image captions, navigation links, and footer text stay full strength.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
-import { withBrowser } from "./lib/check";
-import { studyFade, withBridge } from "./lib/fade";
+import { toggle, waitForState, withBrowser } from "./lib/check";
+import { coldCut, withBridge } from "./lib/cut";
 
 export default async function S4(context: CheckContext) {
   await context.bridge.clear();
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
-    const result = await studyFade(context, browser, page, "warp", 8);
-    assert.equal(result.response.source, "pi");
-    return `${result.observed}/${result.expected.length} faded sentences visible in ${result.elapsed.toFixed(1)} ms, ${result.layout.excludedHits} excluded spans`;
+    const { root, ids, elapsed } = await coldCut(context, browser, page, "warp");
+    const excluded = page.locator("h1, h2, h3, table, pre, figcaption, header nav, footer");
+    const protectedText = () => excluded.allTextContents();
+    const during = await protectedText();
+    const height = (await root.boundingBox())!.height;
+    await toggle(page);
+    await waitForState(page, "picks-ready");
+    const originalHeight = (await root.boundingBox())!.height;
+    assert.ok(height < originalHeight, `Warp took ${height}px cut vs ${originalHeight}px original`);
+    assert.deepEqual(await protectedText(), during);
+    return `${ids.length} sentences removed in ${elapsed.toFixed(1)} ms, ${originalHeight - height}px shorter, ${during.length} excluded elements unchanged`;
   }));
 }

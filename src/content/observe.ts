@@ -1,7 +1,7 @@
 const quietMs = 12;
 const maxWaitMs = 80;
 
-export function observePage(scan: () => void, navigate: () => void) {
+export function observePage(scan: () => void, navigate: () => void, onMutations: (records: MutationRecord[]) => void) {
   let firstMutation: number | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let href = location.href;
@@ -15,8 +15,9 @@ export function observePage(scan: () => void, navigate: () => void) {
     return true;
   }
 
-  new MutationObserver(() => {
-    if (urlChanged()) return;
+  function changed(records: MutationRecord[]) {
+    if (!records.length) return;
+    onMutations(records);
     const now = performance.now();
     firstMutation ??= now;
     clearTimeout(timer);
@@ -24,7 +25,13 @@ export function observePage(scan: () => void, navigate: () => void) {
       firstMutation = undefined;
       if (!urlChanged()) scan();
     }, Math.max(0, Math.min(quietMs, maxWaitMs - (now - firstMutation))));
-  }).observe(document.documentElement, {
+  }
+
+  const observer = new MutationObserver((records) => {
+    changed(records);
+    urlChanged();
+  });
+  observer.observe(document.documentElement, {
     subtree: true, childList: true, characterData: true,
     attributes: true, attributeFilter: ["hidden", "aria-hidden", "class", "contenteditable"],
   });
@@ -32,4 +39,10 @@ export function observePage(scan: () => void, navigate: () => void) {
   const navigation = (window as Window & { navigation?: EventTarget }).navigation;
   if (navigation) navigation.addEventListener("currententrychange", urlChanged);
   else window.setInterval(urlChanged, 50);
+
+  return (project: () => void) => {
+    // Keep pending site mutations and discard records from the synchronous projection.
+    changed(observer.takeRecords());
+    try { project(); } finally { observer.takeRecords(); }
+  };
 }

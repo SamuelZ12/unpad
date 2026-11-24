@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { roots } from "./lib/browser";
 import { atMost, trace, waitForState, withBrowser } from "./lib/check";
-import { withBridge } from "./lib/fade";
+import { withBridge } from "./lib/cut";
 import { docCrop, save } from "./lib/pixels";
 
 export default async function S16(context: CheckContext) {
