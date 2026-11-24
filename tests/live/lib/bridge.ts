@@ -39,10 +39,16 @@ export async function testBridge() {
     await cp(history, cache, { recursive: true, force: false });
   }
   let server: Awaited<ReturnType<typeof startBridge>> | undefined;
-  async function start(invalid = false) {
+  async function start(invalid = false, invalidOutputReady = Promise.resolve()) {
     if (server) throw new Error("Test bridge already started");
     server = await startBridge({ ...config, port: 18941, dataDir: data }, invalid ? () => ({
-      stdout: new Blob(["invalid selection"]).stream(),
+      stdout: new ReadableStream<Uint8Array>({
+        async start(controller) {
+          await invalidOutputReady;
+          controller.enqueue(new TextEncoder().encode("invalid selection"));
+          controller.close();
+        },
+      }),
       exited: Promise.resolve(0),
       kill() {},
     }) : undefined);

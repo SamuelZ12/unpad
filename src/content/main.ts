@@ -1,4 +1,4 @@
-import { fadedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
+import { candidates, fadedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
 import type { Doc } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse } from "../shared/wire";
 import { extract, type AnchoredDoc } from "./anchor";
@@ -18,6 +18,7 @@ const shown = new Set<Doc["key"]>();
 
 let state: PageState = { lensOn: false, holding: false, docs: new Map() };
 let anchoredDocs: AnchoredDoc[] = [];
+let lastBadge: string | undefined;
 
 function currentView() {
   if (anchoredDocs.length === state.docs.size) return view(state);
@@ -28,12 +29,18 @@ function currentView() {
 function render(animate = true) {
   paint(anchoredDocs, state, animate);
   const html = document.documentElement;
-  html.dataset.fillerCutState = currentView();
+  const current = currentView();
+  html.dataset.fillerCutState = current;
   let fadedTotal = 0;
+  let readyTotal = 0;
+  let failed = false;
   for (const { doc } of anchoredDocs) {
     const faded = fadedIds(state, doc.key).length;
     fadedTotal += faded;
-    const picks = state.docs.get(doc.key)?.picks;
+    const entry = state.docs.get(doc.key);
+    const picks = entry?.picks;
+    if (entry && current === "picks-ready") readyTotal += candidates(entry).length;
+    failed ||= picks?.kind === "failed";
     if (!faded || picks?.kind !== "ready" || shown.has(doc.key)) continue;
     shown.add(doc.key);
     void log({
@@ -42,6 +49,15 @@ function render(animate = true) {
     }).catch(console.warn);
   }
   html.dataset.fillerCutFaded = String(fadedTotal);
+  let badge = "";
+  if (current === "waiting") badge = "…";
+  else if (current === "faded") badge = String(fadedTotal);
+  else if (current === "picks-ready") badge = String(readyTotal);
+  else if (failed) badge = "!";
+  if (badge !== lastBadge) {
+    lastBadge = badge;
+    void chrome.runtime.sendMessage({ type: "badge", text: badge }).catch(console.warn);
+  }
 }
 
 function dispatch(event: PageEvent) {

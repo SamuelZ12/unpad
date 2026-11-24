@@ -3,6 +3,7 @@
   "name": "Filler Cut",
   "version": "0.0.1",
   "permissions": ["storage"],
+  "action": {},
   "background": {
     "service_worker": "sw.js"
   },

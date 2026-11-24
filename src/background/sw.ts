@@ -28,7 +28,14 @@ export async function selectDoc(body: unknown, fetcher: (input: URL, init: Reque
 if (typeof chrome !== "undefined") {
   let toggles = Promise.resolve();
   const queueEvents = chromeEventQueue();
-  chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (message?.type === "badge") {
+      const tabId = sender.tab?.id;
+      if (tabId === undefined || sender.frameId !== 0 || typeof message.text !== "string" ||
+        !/^(?:…|!|[1-9]\d*)?$/.test(message.text)) return;
+      void chrome.action.setBadgeText({ tabId, text: message.text }).then(() => reply(true), () => reply(false));
+      return true;
+    }
     if (message?.type === "toggle") {
       const write = toggles.then(async () => {
         const { lensOn } = await chrome.storage.local.get("lensOn");
