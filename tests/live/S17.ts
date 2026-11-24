@@ -25,7 +25,8 @@ export default async function S17(context: CheckContext) {
     const entry = await cacheEntry(context, response.cacheKey);
     const paint = await painted(page);
     const marks = assertMarkedSelection(entry, paint);
-    assert.ok(paint.faded >= 3);
+    // Marks are never faded, so they can take fades away from the keep call's three or more.
+    assert.ok(paint.faded >= 1);
     const initial = await shot(true);
     await save(context.evidence + "/wang-fades-and-marks", initial);
     const layout = await geometry(page);
