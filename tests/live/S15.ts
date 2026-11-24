@@ -7,10 +7,13 @@ import { save, screenshot } from "./lib/pixels";
 export default async function S15(context: CheckContext) {
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
     const { root, ids } = await referenceCut(context, browser, page, "warp");
+    await page.evaluate(() => document.fonts.ready);
     const links = root.locator("a[href^=http]:visible").filter({ hasText: /\w+/ });
-    const link = links.first();
-    await link.scrollIntoViewIfNeeded();
-    const href = await link.evaluate((node) => (node as HTMLAnchorElement).href);
+    const { href, attribute } = await links.first().evaluate((node: HTMLAnchorElement) => {
+      node.scrollIntoView({ block: "center", behavior: "instant" });
+      return { href: node.href, attribute: node.getAttribute("href")! };
+    });
+    const link = root.locator(`a[href=${JSON.stringify(attribute)}]:visible`).first();
     await save(context.evidence + "/warp-link", (await screenshot(page)).png);
     const from = (await context.bridge.events()).length;
     const atClick = page.evaluate(() => new Promise<number>((resolve) => {
