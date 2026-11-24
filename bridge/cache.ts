@@ -8,7 +8,8 @@ import type { HealthResponse, SelectRequest } from "../src/shared/wire";
 export async function cacheKeyFor(doc: SelectRequest, versions: HealthResponse): Promise<CacheKey> {
   const { selectorVersion, rulesVersion } = versions;
   const key = await docKey(doc.title, doc.sentences);
-  return await sha256(`${selectorVersion}:${rulesVersion}:${key}`) as CacheKey;
+  const check = doc.check ? `:${doc.check.url}` : "";
+  return await sha256(`${selectorVersion}:${rulesVersion}:${key}${check}`) as CacheKey;
 }
 
 export function cachePath(dataDir: string, key: CacheKey): string {

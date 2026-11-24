@@ -7,15 +7,17 @@ export const PI_COMMAND = [
   "--model", "anthropic/claude-opus-5-5", "--thinking", "off", "--",
 ] as const;
 
-export const PARSER_VERSION = 1;
+export const PARSER_VERSION = 2;
+export const CHECK_PROMPT = "First decide whether this page should be cut at all. Answer READ if the main content is an article, essay, blog post, news story, long social post or paper: continuous prose by an author, meant to be read from start to finish. Answer SKIP for anything else: a README or project page, API or reference documentation, an issue or comment thread, a question-and-answer page, a feed, index or list of posts, search results, a profile, a product or pricing page, an app screen. If the answer is SKIP, output the single word SKIP and nothing else. Otherwise: ";
 
 const SCRUBBED_ENV = [
   "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY",
   "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDECODE", "CODEX_API_KEY",
 ];
 
-export function parseSelection(raw: string, sentenceCount: number): Selection | undefined {
+export function parseSelection(raw: string, sentenceCount: number, checked = false): Selection | undefined {
   const answer = raw.trim();
+  if (checked && answer === "SKIP") return { kind: "skip" };
   if (answer === "ALL" || answer === '"ALL"') return { kind: "keep-all" };
 
   let values: unknown;
@@ -94,11 +96,12 @@ export async function select(
 ): Promise<{ selection: Selection; raw: string }> {
   const title = doc.title ? `Title: ${doc.title.replace(/\s+/g, " ")}\n` : "";
   const sentences = doc.sentences.map((sentence, i) => `${i + 1}: ${sentence}\n`).join("");
-  const prompt = `${base}${rules}\n${title}SOURCE:\n${sentences}`;
+  const checkUrl = doc.check ? `URL: ${doc.check.url}\n` : "";
+  const prompt = `${doc.check ? CHECK_PROMPT : ""}${base}${rules}\n${checkUrl}${title}SOURCE:\n${sentences}`;
   let raw = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     raw = await ask(prompt);
-    const selection = parseSelection(raw, doc.sentences.length);
+    const selection = parseSelection(raw, doc.sentences.length, !!doc.check);
     if (selection) return { selection, raw };
   }
   throw new Error(`Pi returned an invalid selection twice: ${JSON.stringify(raw.slice(0, 300))}`);

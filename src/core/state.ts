@@ -30,7 +30,7 @@ export type PageEvent =
 export type View = "idle" | "waiting" | "picks-ready" | "faded" | "revealed";
 
 export function candidates(entry: DocState): SentenceId[] {
-  if (entry.picks.kind !== "ready" || entry.picks.selection.kind === "keep-all") return [];
+  if (entry.picks.kind !== "ready" || entry.picks.selection.kind !== "keep") return [];
   const keep = new Set(entry.picks.selection.keep);
   return entry.doc.sentences.map((_, index) => (index + 1) as SentenceId)
     .filter((id) => !keep.has(id) && !entry.restored.has(id));

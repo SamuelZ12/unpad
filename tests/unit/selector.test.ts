@@ -20,6 +20,22 @@ test("only fades when at least three sentences are left out", () => {
   expect(parseSelection("[1,2,3]", 6)?.kind).toBe("keep");
 });
 
+test("accepts a standalone SKIP only for checked pages", async () => {
+  expect(parseSelection("SKIP", 6)).toBeUndefined();
+  expect(parseSelection('"SKIP"', 6, true)).toBeUndefined();
+  expect(parseSelection("SKIP: project page", 6, true)).toBeUndefined();
+  const doc = { title: "Project", sentences: ["One."], check: { url: "https://example.com/repo" } };
+  const prompts: string[] = [];
+  const result = await select(doc, "Base\n", "Rules\n", async (prompt) => {
+    prompts.push(prompt);
+    return "SKIP\n";
+  });
+  expect(prompts).toHaveLength(1);
+  expect(prompts[0]).toStartWith("First decide whether this page should be cut at all.");
+  expect(prompts[0]).toEndWith("Base\nRules\n\nURL: https://example.com/repo\nTitle: Project\nSOURCE:\n1: One.\n");
+  expect(result).toEqual({ selection: { kind: "skip" }, raw: "SKIP\n" });
+});
+
 test("formats the prompt and retries invalid output once", async () => {
   const doc = { title: "Page title", sentences: ["One.", "Two.", "Three.", "Four."] };
   const prompts: string[] = [];

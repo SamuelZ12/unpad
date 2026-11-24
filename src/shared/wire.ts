@@ -4,6 +4,7 @@ import type { CacheKey, LogEvent, RulesVersion, Selection, SelectorVersion, Sent
 export interface SelectRequest {
   readonly title: string;
   readonly sentences: readonly string[];
+  readonly check?: { readonly url: string };
 }
 
 export interface SelectResponse {
@@ -50,7 +51,7 @@ function isSentenceId(value: unknown): value is SentenceId {
 
 function isSelection(value: unknown): value is Selection {
   if (!isRecord(value)) return false;
-  if (value.kind === "keep-all") return true;
+  if (value.kind === "keep-all" || value.kind === "skip") return true;
   return value.kind === "keep" && Array.isArray(value.keep)
     && value.keep.length > 0 && value.keep.every(isSentenceId)
     && new Set(value.keep).size === value.keep.length;
@@ -78,7 +79,13 @@ export function parseSelectRequest(value: unknown): SelectRequest | undefined {
   if (!isRecord(value) || typeof value.title !== "string" || !Array.isArray(value.sentences)
     || value.sentences.length < MIN_SENTENCES || value.sentences.length > MAX_SENTENCES
     || !value.sentences.every((sentence) => typeof sentence === "string")) return undefined;
-  return { title: value.title, sentences: value.sentences };
+  const { title, sentences, check } = value;
+  if (check === undefined) return { title, sentences };
+  if (!isRecord(check) || typeof check.url !== "string") return undefined;
+  const url = URL.parse(check.url);
+  if (!url || (url.protocol !== "http:" && url.protocol !== "https:") ||
+    check.url !== url.origin + url.pathname) return undefined;
+  return { title, sentences, check: { url: check.url } };
 }
 
 export function parseSelectResponse(value: unknown): SelectResponse | undefined {

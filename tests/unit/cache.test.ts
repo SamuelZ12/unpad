@@ -22,6 +22,37 @@ test("the cache key changes with the rules bytes, the prompt, and the fade thres
   expect(new Set(keys).size).toBe(4);
 });
 
+test("checked selections have their own cache keys and SKIP is cached", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "filler-cache-"));
+  const versions = await versionsFor(prompt, rules);
+  const check = { url: "https://example.com/repo" };
+  const checked = { ...doc, check };
+  const keys = await Promise.all([doc, checked, { ...doc, check: { url: "https://example.com/article" } }]
+    .map((request) => cacheKeyFor(request, versions)));
+  expect(new Set(keys).size).toBe(3);
+  let spawns = 0;
+  const spawn: PiSpawn = (command) => {
+    spawns++;
+    const answer = command.at(-1)?.includes(check.url) ? "SKIP" : "[1,2,3]";
+    return { stdout: new Blob([answer]).stream(), exited: Promise.resolve(0), kill: () => {} };
+  };
+  const server = await startBridge({ port: 0, dataDir, versions, prompt, rules: "Rules" }, spawn);
+  try {
+    const post = async (request: typeof doc | typeof checked) => {
+      const response = await fetch(new URL("/select", server.url), { method: "POST", body: JSON.stringify(request) });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    expect(await post(checked)).toEqual({ cacheKey: keys[1], selection: { kind: "skip" } });
+    expect(await post(doc)).toEqual({ cacheKey: keys[0], selection: { kind: "keep", keep: [1, 2, 3] } });
+    expect(await post(checked)).toEqual({ cacheKey: keys[1], selection: { kind: "skip" } });
+    expect(spawns).toBe(2);
+  } finally {
+    await server.stop(true);
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("overlapping requests share a Pi call and ignore incomplete cache files", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "filler-cache-"));
   const versions = await versionsFor(prompt, rules);

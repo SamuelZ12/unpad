@@ -20,8 +20,21 @@ test("select response requires a cache key and a selection with integer ids", ()
   const selection = { kind: "keep", keep: [1, 3] };
   expect<unknown>(parseSelectResponse({ cacheKey, selection })).toEqual({ cacheKey, selection });
   expect(parseSelectResponse({ cacheKey, selection: { kind: "keep-all" } })).toBeDefined();
+  expect<unknown>(parseSelectResponse({ cacheKey, selection: { kind: "skip" } }))
+    .toEqual({ cacheKey, selection: { kind: "skip" } });
   expect(parseSelectResponse({ selection })).toBeUndefined();
   expect(parseSelectResponse({ cacheKey, selection: { kind: "keep", keep: [1.5] } })).toBeUndefined();
+});
+
+test("a page check carries only the HTTP origin and pathname", () => {
+  const doc = { title: "", sentences: Array(MIN_SENTENCES).fill("A sentence.") };
+  const checked = { ...doc, check: { url: "https://example.com:8443/an%20article" } };
+  expect(parseSelectRequest(checked)).toEqual(checked);
+  for (const check of [null, {}, { url: "file:///path" }, { url: "/path" },
+    { url: "https://user:pass@example.com/path" }, { url: "https://example.com/path?x=1" },
+    { url: "https://example.com/path#" }]) {
+    expect(parseSelectRequest({ ...doc, check })).toBeUndefined();
+  }
 });
 
 test("events request checks each event", () => {

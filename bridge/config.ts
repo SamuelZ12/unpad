@@ -4,7 +4,7 @@ import { MIN_FADED } from "../src/shared/config";
 import { sha256 } from "../src/shared/keys";
 import type { RulesVersion, SelectorVersion } from "../src/shared/types";
 import type { HealthResponse } from "../src/shared/wire";
-import { PARSER_VERSION, PI_COMMAND } from "./selector";
+import { CHECK_PROMPT, PARSER_VERSION, PI_COMMAND } from "./selector";
 
 export async function versionsFor(
   prompt: string,
@@ -12,7 +12,7 @@ export async function versionsFor(
   minFaded = MIN_FADED,
 ): Promise<HealthResponse> {
   const [selector, reader] = await Promise.all([
-    sha256(JSON.stringify([prompt, PI_COMMAND, minFaded, PARSER_VERSION])),
+    sha256(JSON.stringify([prompt, CHECK_PROMPT, PI_COMMAND, minFaded, PARSER_VERSION])),
     sha256(rules),
   ]);
   return {

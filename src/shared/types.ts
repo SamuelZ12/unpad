@@ -5,7 +5,7 @@ type Brand<T, B extends string> = T & { readonly [brand]: B };
 export type SentenceId = Brand<number, "SentenceId">;
 /** sha256 hex of the Doc's title and sentence texts. */
 export type DocKey = Brand<string, "DocKey">;
-/** sha256 hex of selector version, rules version, and DocKey. */
+/** sha256 hex of selector version, rules version, DocKey, and optional check URL. */
 export type CacheKey = Brand<string, "CacheKey">;
 export type SelectorVersion = Brand<string, "SelectorVersion">;
 export type RulesVersion = Brand<string, "RulesVersion">;
@@ -24,6 +24,7 @@ export interface Doc {
 
 /** The selector's answer for one Doc, after the bridge has checked it. */
 export type Selection =
+	| { readonly kind: "skip" }
 	| { readonly kind: "keep-all" }
 	| { readonly kind: "keep"; readonly keep: readonly SentenceId[] };
 
