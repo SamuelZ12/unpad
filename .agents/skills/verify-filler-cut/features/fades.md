@@ -1,24 +1,24 @@
-# Automatic fades and badge
+# Automatic cuts and badge
 
-Eligible pages show fades and key sentence marks after picks arrive. The badge counts fades.
+Eligible pages show cuts and key sentence marks after picks arrive. The badge counts removed sentences.
 
 ## Sub-features
 
-- S1–S5 cover the first fade, unchanged text, dense prose, and bridge failure.
+- S1–S5 cover the first cut, unchanged text, dense prose, and bridge failure.
 - S12 checks short posts and pages on sites you haven't added.
-- S12-page-mode checks fading, toggling, and reload after a toolbar action on a new site.
-- S12-added-site checks the exact origin grant, immediate fades, a reload, and removal.
-- S12-page-check checks a skipped README, a profile that sends nothing, and an article that fades.
+- S12-page-mode checks removal, toggling, and reload after a toolbar action on a new site.
+- S12-added-site checks the exact origin grant, immediate cuts, a reload, and removal.
+- S12-page-check checks a skipped README, a profile that sends nothing, and an article that cuts.
 - S13 reads the per-tab toolbar badge.
-- S17 and S18 check tint, mark limits, and separation from the fades.
+- S17 and S18 check tint, mark limits, and separation from the cuts.
 
 ## How to get to it (user POV)
 
-Open an X status page, a Claude blog article, or an article on a site you added. Read the toolbar badge while picks arrive. On a new site, click the toolbar icon or press the toggle shortcut to fade the current document. To enable automatic fades, right-click the toolbar icon, check **Always run on this site**, and select **Allow** in Chrome's prompt.
+Open an X status page, a Claude blog article, or an article on a site you added. Read the toolbar badge while picks arrive. On a new site, click the toolbar icon or press the toggle shortcut to cut the current document. To enable automatic cuts, right-click the toolbar icon, check **Always run on this site**, and select **Allow** in Chrome's prompt.
 
 ## Driving it with Playwright
 
-Use a fresh test profile and a test bridge. Run `bun run verify S1 S2 S3 S4 S5 S12 S12-page-mode S12-added-site S12-page-check S13 S17 S18`. Check the per-page fade and mark counts, pixel comparisons, request log, and badge text in the results.
+Use a fresh test profile and a test bridge. Run `bun run verify S1 S2 S3 S4 S5 S12 S12-page-mode S12-added-site S12-page-check S13 S17 S18`. Check the per-page cut and mark counts, pixel comparisons, request log, and badge text in the results.
 
 ## Gotchas
 
