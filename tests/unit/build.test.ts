@@ -23,7 +23,10 @@ test("build emits the MV3 extension with its bridge permission", async () => {
       { matches: ["https://x.com/*", "https://claude.com/*"], js: ["main.js"] },
     ]);
     expect(await Bun.file(join(dir, "main.js")).text()).not.toContain("fillerCutDebug");
+    // The worker's name follows its content, so a browser restart cannot run a stale copy.
+    expect(manifest.background.service_worker).toMatch(/^sw-[0-9a-f]{8}\.js$/);
     expect(await Bun.file(join(dir, manifest.background.service_worker)).exists()).toBe(true);
+    expect(await Bun.file(join(dir, "sw.js")).exists()).toBe(false);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

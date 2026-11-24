@@ -36,6 +36,7 @@ Replace `<ids>` with space-separated IDs such as `S1 S8`. To choose a mode for a
 - Real Pi calls use Samuel's Claude plan. Warm checks reuse the cache within a run. Set `FILLER_CUT_VERIFY_CACHE` to a previous run's `bridge/cache` directory to seed a new run. Cold checks clear the cache before measuring.
 - Playwright keys reach the content script. They never fire Chrome's browser shortcut. Checks that exercise the fallback page key load a temporary copy of the extension with the browser shortcut unassigned. S8 needs a visible window for accurate compositor timing on macOS. The harness opens one there.
 - Run `bun run verify S12-enable-site` to exercise per-origin access. The check sends Chrome's toolbar action through CDP and pre-approves each origin through Chrome's extension settings. Closing the window dismisses a separate live permission request. The check covers the grant and dismissal results, automatic fades, and the toggle count. Testing a physical shortcut or either button in the permission dialog requires native browser input.
+- To update a copy that is loaded unpacked in a real Chrome, copy the new build over its folder and have the reader press the reload arrow on the extension's card. Copied files change nothing until then (measured Nov 23 2026: manifest, worker and page script all stayed old). The build names the worker by its content hash because a browser restart alone kept running the old worker next to the new manifest and page script.
 
 ## Evidence
 
