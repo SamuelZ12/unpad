@@ -25,17 +25,24 @@ export async function restoreSites() {
   await Promise.all(sites.map(registerSite));
 }
 
+export function siteMatch({ protocol, hostname, port }: URL) {
+  if (protocol !== "https:" && protocol !== "http:") return;
+  if (hostname.includes("*")) return;
+  // Chrome match patterns without a port also cover other ports on the host.
+  return `${protocol}//${hostname}:${port || (protocol === "https:" ? 443 : 80)}/*`;
+}
+
 export async function activateSite(tab: chrome.tabs.Tab, setLens: (on?: boolean) => Promise<void>) {
   const { id: tabId, url } = tab;
   if (tabId === undefined || !url) return;
-  const { protocol, hostname, origin, port } = new URL(url);
-  if (protocol !== "https:" && protocol !== "http:") return;
+  const pageUrl = new URL(url);
+  const match = siteMatch(pageUrl);
+  if (!match) return;
 
+  const { protocol, hostname, origin } = pageUrl;
   const host = `${protocol}//${hostname}`;
   const builtin = chrome.runtime.getManifest().content_scripts?.some(({ matches }) => matches?.includes(host + "/*"));
   if (!builtin) {
-    // Chrome match patterns without a port also cover other ports on the host.
-    const match = `${host}:${port || (protocol === "https:" ? 443 : 80)}/*`;
     const permission = { origins: [match] };
     const hadAccess = chrome.permissions.contains(permission);
     // Make the request in the action's gesture, before awaiting any Chrome API.
