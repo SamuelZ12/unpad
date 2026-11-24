@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Filler Cut",
-  "version": "0.0.3",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "version": "0.1.0",
+  "permissions": ["storage", "activeTab", "scripting", "contextMenus"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "action": {},
   "commands": {

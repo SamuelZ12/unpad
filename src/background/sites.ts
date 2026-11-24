@@ -19,7 +19,7 @@ async function registerSite(match: string) {
 
 async function grantedSites() {
   const { origins = [] } = await new Promise<chrome.permissions.Permissions>((resolve) => chrome.permissions.getAll(resolve));
-  // Only the exact scheme, host, and port grants from the action enable generic extraction.
+  // Only exact scheme, host, and port grants enable generic extraction.
   return origins.filter((origin) => /^https?:\/\/(?:\[[^\]]+\]|[^*:]+):\d+\/\*$/.test(origin));
 }
 
@@ -42,37 +42,85 @@ export function siteMatch({ protocol, hostname, port }: URL) {
   return `${protocol}//${hostname}:${port || (protocol === "https:" ? 443 : 80)}/*`;
 }
 
-export async function activateSite(tab: chrome.tabs.Tab, setLens: (on?: boolean) => Promise<void>) {
-  const { id: tabId, url } = tab;
+function builtinSite(url: URL) {
+  const pattern = `${url.protocol}//${url.hostname}/*`;
+  return chrome.runtime.getManifest().content_scripts?.some(({ matches }) => matches?.includes(pattern)) ?? false;
+}
+
+export async function siteEnabled(url: string | undefined) {
+  const pageUrl = url && URL.parse(url);
+  if (!pageUrl) return false;
+  const match = siteMatch(pageUrl);
+  return !!match && (builtinSite(pageUrl) || (await grantedSites()).includes(match));
+}
+
+type SetLens = (on?: boolean) => Promise<void>;
+
+async function inspectDocument(tabId: number) {
+  const [document] = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.href });
+  return document;
+}
+
+async function injectDocument(tabId: number, url: string, file: string) {
+  // Bind injection to the document inspected by the action, even if the tab navigates.
+  const document = await inspectDocument(tabId);
+  if (document?.documentId && document.result === url) {
+    await chrome.scripting.executeScript({ target: { tabId, documentIds: [document.documentId] }, files: [file] });
+  }
+}
+
+export async function activateDocument({ id: tabId, url }: chrome.tabs.Tab, setLens: SetLens) {
+  if (tabId === undefined || !url || !siteMatch(new URL(url))) return;
+  if (!await siteEnabled(url)) return injectDocument(tabId, url, "page.js");
+  const status = await chrome.tabs.sendMessage(tabId, { type: "editor-status" }, { frameId: 0 })
+    .catch(() => undefined) as { editing: boolean; site: boolean } | undefined;
+  if (status?.editing) return;
+  await setLens();
+  if (!status?.site) await injectDocument(tabId, url, "main.js");
+}
+
+export async function setSite({ id: tabId, url }: chrome.tabs.Tab, checked: boolean, setLens: SetLens) {
   if (tabId === undefined || !url) return;
   const pageUrl = new URL(url);
   const match = siteMatch(pageUrl);
-  if (!match) return;
-
-  const { protocol, hostname, origin } = pageUrl;
-  const host = `${protocol}//${hostname}`;
-  const builtin = chrome.runtime.getManifest().content_scripts?.some(({ matches }) => matches?.includes(host + "/*"));
-  if (!builtin) {
-    const permission = { origins: [match] };
-    const hadAccess = chrome.permissions.contains(permission);
-    // Make the request in the action's gesture, before awaiting any Chrome API.
+  if (!match || builtinSite(pageUrl)) return;
+  const permission = { origins: [match] };
+  if (checked) {
+    // Request access in the menu click's gesture, before awaiting any Chrome API.
     if (!await chrome.permissions.request(permission)) return;
     await registerSite(match);
-    if (await hadAccess) {
-      const editing = await focusedEditor(tabId);
-      if (editing === true) return;
-      if (editing === false) return setLens();
+    await setLens(true);
+    await injectDocument(tabId, pageUrl.href, "main.js");
+  } else {
+    const filter = { ids: [match] };
+    if ((await chrome.scripting.getRegisteredContentScripts(filter)).length) {
+      await chrome.scripting.unregisterContentScripts(filter);
     }
-    const current = await chrome.tabs.get(tabId).catch(() => undefined);
-    if (current?.url && new URL(current.url).origin === origin) {
-      await setLens(true);
-      await chrome.scripting.executeScript({ target: { tabId }, files: ["main.js"] });
-    }
-    return;
+    const tabs = await chrome.tabs.query({});
+    await chrome.permissions.remove(permission);
+    await Promise.all(tabs.filter(({ url }) => !url || new URL(url).origin === pageUrl.origin)
+      .map(({ id }) => id === undefined ? undefined :
+        chrome.tabs.sendMessage(id, { type: "site-removed", origin: pageUrl.origin }, { frameId: 0 }).catch(() => {})));
   }
-  if (await focusedEditor(tabId) !== true) await setLens();
 }
 
-function focusedEditor(tabId: number): Promise<boolean | undefined> {
-  return chrome.tabs.sendMessage(tabId, { type: "focused-editor" }, { frameId: 0 }).catch(() => undefined);
+export const siteMenuId = "always-run";
+let menuUpdate = 0;
+
+export async function syncSiteMenu() {
+  const update = ++menuUpdate;
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  // Content-script matches can provide access to the document without exposing Tab.url.
+  const tabId = tab?.id;
+  let url = tab?.url;
+  if (!url && tabId !== undefined) {
+    url = await chrome.tabs.sendMessage(tabId, { type: "site-url" }, { frameId: 0 }).catch(() => undefined);
+    if (!url && (await grantedSites()).length) {
+      url = (await inspectDocument(tabId).catch(() => undefined))?.result;
+    }
+  }
+  const pageUrl = url && URL.parse(url);
+  const builtin = !!pageUrl && builtinSite(pageUrl);
+  const checked = builtin || await siteEnabled(url);
+  if (update === menuUpdate) await chrome.contextMenus.update(siteMenuId, { checked, enabled: !builtin });
 }

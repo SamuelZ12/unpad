@@ -35,8 +35,8 @@ function anchor(block: Element, textWalker?: (block: Element) => TreeWalker) {
   });
 }
 
-export async function extract(document: Document, url: URL): Promise<AnchoredDoc[]> {
-  const docs = surfaces(document, url).map(async ({ root, surface, title, blocks, textWalker }) => {
+export async function extract(document: Document, url: URL, checkArticle = false): Promise<AnchoredDoc[]> {
+  const docs = surfaces(document, url, checkArticle).map(async ({ root, surface, title, blocks, textWalker }) => {
     const spans = blocks.flatMap((block) => anchor(block, textWalker));
     if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
     const sentences = spans.map(({ text }) => text);

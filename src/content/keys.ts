@@ -19,10 +19,9 @@ export function isToggle(event: KeyboardEvent) {
     !event.ctrlKey && !event.metaKey && !event.repeat && !isEditing(event);
 }
 
-export function listenForToggle(toggle: () => void) {
+export function listenForToggle(toggle: () => false | void) {
   window.addEventListener("keydown", (event) => {
-    if (!isToggle(event)) return;
+    if (!isToggle(event) || toggle() === false) return;
     event.preventDefault();
-    toggle();
   }, true);
 }

@@ -66,7 +66,7 @@ function genericText(root: Element) {
   return collapse(text);
 }
 
-function genericArticle(document: Document): SurfaceDoc[] {
+function genericArticle(document: Document, checkArticle: boolean): SurfaceDoc[] {
   if (document.designMode === "on") return [];
   let root: Element | null = document.body;
   let longest = -1;
@@ -83,11 +83,18 @@ function genericArticle(document: Document): SurfaceDoc[] {
   const blocks = [...root.querySelectorAll(prose)].filter((block) =>
     !block.closest(genericNonProse) &&
     ![...block.querySelectorAll(prose)].some((child) => !child.closest(privateText)));
+  if (checkArticle && blocks.filter((block) =>
+    !block.closest("ul, ol, li, dl, menu, [role=list], [role=listitem]") &&
+    genericText(block).split(" ").length >= 40).length < 5) return [];
   return [{ root, title, blocks, surface: "blog", textWalker: genericTextWalker }];
 }
 
-export function surfaces(document: Document, url: URL): SurfaceDoc[] {
+export function surfaces(document: Document, url: URL, checkArticle: boolean): SurfaceDoc[] {
   if (url.hostname === "x.com") return xStatus(document, url.pathname);
   if (url.hostname === "claude.com") return blog(document, url.pathname);
-  return genericArticle(document);
+  return genericArticle(document, checkArticle);
+}
+
+export function usesGenericSurface(url: URL) {
+  return url.hostname !== "x.com" && url.hostname !== "claude.com";
 }

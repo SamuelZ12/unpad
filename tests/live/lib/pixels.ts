@@ -33,7 +33,7 @@ export async function screenshot(page: Page) {
   return { at, png: PNG.sync.read(bytes) };
 }
 
-export async function docCrop(root: Locator) {
+export async function docBox(root: Locator): Promise<Box> {
   await root.scrollIntoViewIfNeeded();
   const box = await root.evaluate((element) => {
     const range = document.createRange();
@@ -44,9 +44,12 @@ export async function docCrop(root: Locator) {
   if (!box.width || !box.height) throw new Error("Doc has no bounding box");
   // Crop the visible prose above any bottom-of-viewport call to action.
   const top = Math.max(0, box.y);
-  return crop((await screenshot(root.page())).png, {
-    ...box, y: top, height: Math.min(box.y + box.height - top, 450),
-  });
+  return { ...box, y: top, height: Math.min(box.y + box.height - top, 450) };
+}
+
+export async function docCrop(root: Locator) {
+  const box = await docBox(root);
+  return crop((await screenshot(root.page())).png, box);
 }
 
 export async function save(path: string, png: PNG) {

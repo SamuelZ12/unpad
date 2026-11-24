@@ -19,7 +19,9 @@ import S9 from "./S9";
 import S10 from "./S10";
 import S11 from "./S11";
 import S12 from "./S12";
-import S12EnableSite from "./S12-enable-site";
+import S12PageMode from "./S12-page-mode";
+import S12AddedSite from "./S12-added-site";
+import S12PageCheck from "./S12-page-check";
 import S13 from "./S13";
 import S15 from "./S15";
 import S14 from "./S14";
@@ -28,7 +30,8 @@ import S16 from "./S16";
 import picks from "./picks";
 import dark from "./dark";
 
-const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark, S7, S14, S8, S9, S15, S10, S11, S12, "S12-enable-site": S12EnableSite, S13 };
+const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark, S7, S14, S8, S9, S15, S10, S11, S12,
+  "S12-page-mode": S12PageMode, "S12-added-site": S12AddedSite, "S12-page-check": S12PageCheck, S13 };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;

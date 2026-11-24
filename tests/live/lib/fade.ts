@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import { PNG } from "pngjs";
 import type { CacheKey, Selection } from "../../../src/shared/types";
+import type { SelectRequest } from "../../../src/shared/wire";
 import type { CheckContext } from "../run";
 import { state, type Reference } from "./browser";
 import { atMost, toggle, waitForState, withBrowser } from "./check";
@@ -10,8 +11,8 @@ import { save, screenshot, screenshotBytes } from "./pixels";
 
 type Browser = Parameters<Parameters<typeof withBrowser>[1]>[0];
 
-export async function cacheEntry(context: CheckContext, cacheKey: string | null): Promise<{
-  cacheKey: CacheKey; selection: Selection; title: string; sentences: string[];
+export async function cacheEntry(context: CheckContext, cacheKey: string | null): Promise<SelectRequest & {
+  cacheKey: CacheKey; selection: Selection;
 }> {
   assert.ok(cacheKey, "Bridge did not log a cache key");
   return Bun.file(`${context.bridge.data}/cache/${cacheKey}.json`).json();

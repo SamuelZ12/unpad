@@ -3,7 +3,7 @@ import { sha256 } from "../shared/keys";
 import { parseErrorResponse, parseEventsRequest, parseSelectRequest, parseSelectResponse } from "../shared/wire";
 
 import { chromeEventQueue } from "./events";
-import { activateSite, forgetSites, ownsShortcut, restoreSites } from "./sites";
+import { activateDocument, forgetSites, ownsShortcut, restoreSites, setSite, siteEnabled, siteMenuId, syncSiteMenu } from "./sites";
 
 export async function selectDoc(body: unknown, fetcher: (input: URL, init: RequestInit) => Promise<Response> = fetch) {
   const request = parseSelectRequest(body);
@@ -29,6 +29,7 @@ export async function selectDoc(body: unknown, fetcher: (input: URL, init: Reque
 
 if (typeof chrome !== "undefined") {
   let toggles = Promise.resolve();
+  const testSiteMenu: { next?: boolean; result?: Promise<void> } = {};
   function setLens(on?: boolean) {
     const write = toggles.then(async () => {
       const { lensOn } = await chrome.storage.local.get("lensOn");
@@ -38,14 +39,50 @@ if (typeof chrome !== "undefined") {
     return write;
   }
   chrome.action.onClicked.addListener((tab) => {
-    void activateSite(tab, setLens).catch(console.warn);
+    if (process.env.FILLER_CUT_DEV === "1" && testSiteMenu.next !== undefined) {
+      const checked = testSiteMenu.next;
+      delete testSiteMenu.next;
+      // CDP can trigger the action's user gesture but cannot click the native menu.
+      testSiteMenu.result = onSiteMenuClick({ menuItemId: siteMenuId, checked }, tab);
+      void testSiteMenu.result.catch(console.warn);
+      return;
+    }
+    void activateDocument(tab, setLens).catch(console.warn);
   });
+  function refreshMenu() {
+    void syncSiteMenu().catch(console.warn);
+  }
+  async function onSiteMenuClick(info: Pick<chrome.contextMenus.OnClickData, "menuItemId" | "checked" | "pageUrl">, tab?: chrome.tabs.Tab) {
+    if (info.menuItemId !== siteMenuId || !tab || info.checked === undefined) return;
+    try {
+      await setSite({ ...tab, url: tab.url ?? info.pageUrl }, info.checked, setLens);
+    } finally {
+      await syncSiteMenu();
+    }
+  }
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    void onSiteMenuClick(info, tab).catch(console.warn);
+  });
+  if (process.env.FILLER_CUT_DEV === "1") Object.assign(globalThis, { testSiteMenu });
+  chrome.tabs.onActivated.addListener(refreshMenu);
+  chrome.tabs.onUpdated.addListener((_id, _change, tab) => { if (tab.active) refreshMenu(); });
+  chrome.windows.onFocusChanged.addListener(refreshMenu);
+  chrome.permissions.onAdded.addListener(refreshMenu);
+  chrome.permissions.onRemoved.addListener(refreshMenu);
   chrome.runtime.onInstalled.addListener(({ reason, previousVersion }) => {
-    // 0.0.2 turned a whole site on from one key press. Forget those sites once.
-    const sites = reason === "update" && previousVersion === "0.0.2" ? forgetSites() : restoreSites();
+    // Both old releases could enable a site from the action. Ask for menu opt-in again.
+    const legacy = previousVersion === "0.0.2" || previousVersion === "0.0.3";
+    const sites = reason === "update" && legacy ? forgetSites() : restoreSites();
     void sites.catch(console.warn);
+    chrome.contextMenus.create({
+      id: siteMenuId, title: "Always run on this site", type: "checkbox", contexts: ["action"],
+      documentUrlPatterns: ["https://*/*", "http://*/*"],
+    }, () => {
+      if (chrome.runtime.lastError) console.warn(chrome.runtime.lastError.message);
+      refreshMenu();
+    });
   });
-  chrome.runtime.onStartup.addListener(() => { void restoreSites().catch(console.warn); });
+  chrome.runtime.onStartup.addListener(() => { void restoreSites().then(refreshMenu).catch(console.warn); });
   const queueEvents = chromeEventQueue();
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message?.type === "hash" && typeof message.data === "string") {
@@ -61,8 +98,15 @@ if (typeof chrome !== "undefined") {
     }
     if (message?.type === "toggle") {
       // A browser shortcut and a page key event must never both toggle the lens.
-      void ownsShortcut().then((assigned) => assigned ? undefined : setLens())
-        .then(() => reply(true), () => reply(false));
+      void ownsShortcut().then(async (assigned) => {
+        if (assigned) return false;
+        if (message.mode === "site" && await siteEnabled(sender.url)) await setLens();
+        return true;
+      }).then(reply, () => reply(false));
+      return true;
+    }
+    if (message?.type === "site-enabled") {
+      void siteEnabled(sender.url).then(reply, () => reply(false));
       return true;
     }
     if (message?.type === "events") {
@@ -72,7 +116,10 @@ if (typeof chrome !== "undefined") {
       return true;
     }
     if (message?.type !== "select") return;
-    void selectDoc(message.doc).then(reply);
+    void (async () => {
+      if (message.doc?.check && !await siteEnabled(sender.url)) return { error: "Site is no longer enabled" };
+      return selectDoc(message.doc);
+    })().then(reply, () => reply({ error: "Selection failed" }));
     return true;
   });
 }

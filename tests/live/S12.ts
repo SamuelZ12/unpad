@@ -8,7 +8,7 @@ import type { CheckContext } from "./run";
 import { roots, state } from "./lib/browser";
 import { trace, waitForState, withBrowser } from "./lib/check";
 import { withBridge } from "./lib/fade";
-import { difference, docCrop, save } from "./lib/pixels";
+import { crop, difference, docBox, save, screenshot } from "./lib/pixels";
 
 const shortStatus = "https://x.com/xavier_clegg/status/2124646690384986459";
 const otherSite = "https://www.anthropic.com/engineering/building-effective-agents";
@@ -17,11 +17,13 @@ async function observeUntouched(root: Locator, evidence: string) {
   await root.waitFor({ state: "visible" });
   // A slow third-party script can hold the load event past 10 s. The crops below still fail if the page is moving.
   await root.page().waitForLoadState("load", { timeout: 10_000 }).catch(() => undefined);
-  await root.scrollIntoViewIfNeeded();
-  await root.page().evaluate(() => document.fonts.ready);
-  const original = await docCrop(root);
+  const page = root.page();
+  await page.evaluate(() => document.fonts.ready);
+  // Use one rectangle so a second scroll cannot round the crop to a different height.
+  const box = await docBox(root);
+  const original = crop((await screenshot(page)).png, box);
   await Bun.sleep(1000);
-  const after = await docCrop(root);
+  const after = crop((await screenshot(page)).png, box);
   await save(evidence + "-before", original);
   await save(evidence + "-after", after);
   const changed = difference(original, after);
@@ -31,6 +33,7 @@ async function observeUntouched(root: Locator, evidence: string) {
 
 export default async function S12(context: CheckContext) {
   return withBridge(context, () => withBrowser(context, async (_browser, page) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const requests = Bun.file(context.bridge.data + "/requests.jsonl");
     const lineCount = async () => await requests.exists()
       ? (await requests.text()).split("\n").filter(Boolean).length : 0;
@@ -48,7 +51,7 @@ export default async function S12(context: CheckContext) {
     assert.equal(afterShort - before, 0, "Short status added bridge log lines");
 
     await page.goto(otherSite, { waitUntil: "domcontentloaded" });
-    const article = page.locator("main article").first();
+    const article = page.locator("main article p:visible").filter({ hasText: /\S+(?:\s+\S+){30}/ }).first();
     const otherPixels = await observeUntouched(article, context.evidence + "/other-site");
     assert.deepEqual(await trace(page), []);
     const afterOther = await lineCount();

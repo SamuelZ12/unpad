@@ -11,7 +11,7 @@ const outdir = "dist/extension";
 await mkdir(outdir, { recursive: true });
 
 await Bun.build({
-  entrypoints: ["src/content/main.ts", "src/background/sw.ts"],
+  entrypoints: ["src/content/main.ts", "src/content/page.ts", "src/background/sw.ts"],
   outdir,
   naming: "[name].js",
   target: "browser",
