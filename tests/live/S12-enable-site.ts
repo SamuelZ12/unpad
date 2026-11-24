@@ -4,9 +4,12 @@
 // pending prompt by closing its window. Verify fades in both already-open
 // tabs, automatic fades on later loads, and one lens change per action or
 // fallback key in a tab where the extension is running.
+// On Simon's article, add and edit a draft composer and hidden inline text.
+// Each edit leaves the extracted document intact and sends no requests.
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import type { Page, Worker } from "playwright";
+import { debug } from "./extract";
 import type { CheckContext } from "./run";
 import { clearActionShortcut, connectAction, extensionWorker, preapproveHost } from "./lib/action";
 import { launch, state } from "./lib/browser";
@@ -38,7 +41,7 @@ const excluded = "nav, aside, footer, header, form, figure, pre, table";
 
 async function observeActions(worker: Worker) {
   await worker.evaluate(() => {
-    const probe = Object.assign(globalThis, { prompts: [] as Prompt[], lensChanges: [] as boolean[] });
+    const probe = Object.assign(globalThis, { prompts: [] as Prompt[], lensChanges: [] as boolean[], selections: 0 });
     const request = chrome.permissions.request.bind(chrome.permissions);
     chrome.permissions.request = ((permission: chrome.permissions.Permissions) => {
       const prompt: Prompt = { origins: permission.origins ?? [] };
@@ -51,10 +54,14 @@ async function observeActions(worker: Worker) {
     chrome.storage.onChanged.addListener(({ lensOn }, area) => {
       if (area === "local" && lensOn) probe.lensChanges.push(lensOn.newValue === true);
     });
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type === "select") probe.selections++;
+    });
   });
   return {
     prompts: () => worker.evaluate(() => (globalThis as unknown as { prompts: Prompt[] }).prompts),
     changes: () => worker.evaluate(() => (globalThis as unknown as { lensChanges: boolean[] }).lensChanges),
+    selections: () => worker.evaluate(() => (globalThis as unknown as { selections: number }).selections),
   };
 }
 
@@ -198,6 +205,57 @@ export default async function S12EnableSite(context: CheckContext) {
             results.push(`${name} (${layout.rootTag}): 0 changed pixels and requests before action, ${faded.faded}/${entry.sentences.length} faded (${visible.length} in screenshot), 1 request, reload ${faded.faded} faded, second tab ${secondFades.faded}/${otherEntry.sentences.length} faded`);
             await second.close();
           }
+
+          const { docs } = await debug(page);
+          assert.equal(docs.length, 1);
+          const faded = await state(page);
+          const selectionCount = await events.selections();
+          const requestCount = (await bridge.requests()).length;
+          const assertUnchanged = async (step: string) => {
+            await Bun.sleep(250); // The page observer batches edits for at most 80 ms.
+            assert.deepEqual((await debug(page)).docs, docs, step);
+            assert.deepEqual(await state(page), faded, step);
+            assert.equal(await events.selections(), selectionCount, step);
+            assert.equal((await bridge.requests()).length, requestCount, step);
+          };
+          const paragraph = page.locator("p:visible").filter({ hasText: docs[0].sentences[0] }).first();
+          await paragraph.evaluate((p) => {
+            const composer = document.createElement("div");
+            composer.id = "test-composer";
+            composer.contentEditable = "true";
+            for (const word of ["One", "Two", "Three", "Four", "Five", "Six"]) {
+              const draft = document.createElement("p");
+              draft.textContent = `${word} sentence is in the private draft.`;
+              composer.append(draft);
+            }
+            p.after(composer);
+          });
+          await assertUnchanged("added a six-sentence composer");
+          const composer = page.locator("#test-composer");
+          await composer.focus();
+          await page.keyboard.type("Draft edit", { delay: 30 });
+          assert.match(await composer.innerText(), /Draft edit/);
+          await assertUnchanged("typed into the composer");
+          await composer.blur();
+
+          await paragraph.evaluate((p) => {
+            for (const attribute of ["hidden", "aria-hidden"]) {
+              const span = document.createElement("span");
+              span.setAttribute(attribute, "true");
+              span.dataset.testHidden = "";
+              span.textContent = " This inline sentence is hidden.";
+              p.append(span);
+            }
+          });
+          await assertUnchanged("added hidden and aria-hidden spans");
+          const edited = await paragraph.locator(":scope > span[data-test-hidden]")
+            .evaluateAll((spans) => {
+              for (const span of spans) span.textContent = " This hidden sentence has changed.";
+              return spans.length;
+            });
+          assert.equal(edited, 2);
+          await assertUnchanged("changed the hidden spans");
+          results.push(`Simon draft and hidden text: 6 draft sentences, 10 typed characters, 2 hidden spans edited, same ${docs[0].sentences.length} article sentences, 0 extra requests`);
 
           const other = await tabs.newPage();
           await open(other, sites[0].first);

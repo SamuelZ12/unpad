@@ -10,9 +10,9 @@ export interface AnchoredDoc {
   readonly ranges: readonly Range[];
 }
 
-function anchor(block: Element) {
+function anchor(block: Element, textWalker?: (block: Element) => TreeWalker) {
   const document = block.ownerDocument;
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const walker = textWalker?.(block) ?? document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
   const nodes: { node: Text; offset: number }[] = [];
   let text = "";
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -36,8 +36,8 @@ function anchor(block: Element) {
 }
 
 export async function extract(document: Document, url: URL): Promise<AnchoredDoc[]> {
-  const docs = surfaces(document, url).map(async ({ root, surface, title, blocks }) => {
-    const spans = blocks.flatMap(anchor);
+  const docs = surfaces(document, url).map(async ({ root, surface, title, blocks, textWalker }) => {
+    const spans = blocks.flatMap((block) => anchor(block, textWalker));
     if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
     const sentences = spans.map(({ text }) => text);
     const key = await docKey(title, sentences);

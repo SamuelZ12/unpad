@@ -26,7 +26,7 @@ export function observePage(scan: () => void, navigate: () => void) {
     }, Math.max(0, Math.min(quietMs, maxWaitMs - (now - firstMutation))));
   }).observe(document.documentElement, {
     subtree: true, childList: true, characterData: true,
-    attributes: true, attributeFilter: ["hidden", "aria-hidden", "class"],
+    attributes: true, attributeFilter: ["hidden", "aria-hidden", "class", "contenteditable"],
   });
 
   const navigation = (window as Window & { navigation?: EventTarget }).navigation;

@@ -6,9 +6,13 @@ interface SurfaceDoc {
   readonly surface: Surface;
   readonly title: string;
   readonly blocks: readonly Element[];
+  readonly textWalker?: (block: Element) => TreeWalker;
 }
 
 const nonProse = "nav, header, footer, aside, form, figure, figcaption, pre, table, h1, h2, h3, h4, h5, h6, [hidden], [aria-hidden=true]";
+const editable = '[contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i]';
+const privateText = `[hidden], [aria-hidden=true], ${editable}`;
+const genericNonProse = `${nonProse}, ${editable}`;
 const prose = "p, li, blockquote";
 const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
@@ -48,22 +52,38 @@ function blog(document: Document, path: string): SurfaceDoc[] {
   return [{ root: body, title, blocks, surface: "blog" }];
 }
 
+function genericTextWalker(root: Element) {
+  return root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, (node) => {
+    if (!(node instanceof Element)) return NodeFilter.FILTER_ACCEPT;
+    return node.matches(privateText) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+  });
+}
+
+function genericText(root: Element) {
+  const walker = genericTextWalker(root);
+  let text = "";
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) text += (node as Text).data;
+  return collapse(text);
+}
+
 function genericArticle(document: Document): SurfaceDoc[] {
+  if (document.designMode === "on") return [];
   let root: Element | null = document.body;
   let longest = -1;
   for (const candidate of document.querySelectorAll("article, main, [role=main]")) {
     const length = [...candidate.querySelectorAll("p")].reduce((total, paragraph) =>
-      total + (paragraph.closest(nonProse) ? 0 : collapse(paragraph.textContent).length), 0);
+      total + (paragraph.closest(genericNonProse) ? 0 : genericText(paragraph).length), 0);
     if (length <= longest) continue;
     longest = length;
     root = candidate;
   }
   if (!root) return [];
   const heading = root === document.body ? undefined : root.querySelector("h1");
-  const title = collapse(heading?.textContent ?? document.title);
+  const title = heading && !heading.closest(privateText) ? genericText(heading) : collapse(document.title);
   const blocks = [...root.querySelectorAll(prose)].filter((block) =>
-    !block.closest(nonProse) && !block.querySelector(prose));
-  return [{ root, title, blocks, surface: "blog" }];
+    !block.closest(genericNonProse) &&
+    ![...block.querySelectorAll(prose)].some((child) => !child.closest(privateText)));
+  return [{ root, title, blocks, surface: "blog", textWalker: genericTextWalker }];
 }
 
 export function surfaces(document: Document, url: URL): SurfaceDoc[] {
