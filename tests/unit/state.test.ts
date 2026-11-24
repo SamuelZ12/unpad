@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fadedIds, markedIds, reduce, view, type PageState } from "../../src/core/state";
+import { fadedIds, markedIds, reduce, removedRuns, view, type PageState } from "../../src/core/state";
 import type { CacheKey, Doc, DocKey, SentenceId } from "../../src/shared/types";
 
 const id = (n: number) => n as SentenceId;
@@ -54,4 +54,12 @@ test("marks follow the lens, can be unmarked once, and do not overlap fades", ()
   expect(fadedIds(all, doc.key)).toEqual([]);
   expect(view(all)).toBe("faded");
   expect(view(reduce(all, { type: "hold-start" }))).toBe("revealed");
+});
+
+test("removed runs group adjacent sentence IDs", () => {
+  const waiting = reduce(initial, { type: "doc-found", doc });
+  const ready = reduce(waiting, { type: "picks-arrived", docKey: doc.key, cacheKey: "b" as CacheKey,
+    selection: { kind: "keep", keep: [id(1), id(5)] } });
+  expect(removedRuns(ready, doc.key)).toEqual([[2, 3, 4].map(id), [id(6)]]);
+  expect(removedRuns(reduce(ready, { type: "hold-start" }), doc.key)).toEqual([]);
 });
