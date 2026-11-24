@@ -10,7 +10,12 @@ test("accepts ALL with or without JSON quotes, integers, and digit strings", () 
   }
 });
 
-test.each(["[0]", "[7]", "[1.5]", '[1,"1"]', "[]", "Keep [1]", "```json\n[1]\n```"])(
+test("a repeated ID counts once", () => {
+  expect<unknown>(parseSelection('[1,3,"1"]', 6)).toEqual({ kind: "keep", keep: [1, 3] });
+  expect<unknown>(parseKey("[4,1,4,2]", 6)).toEqual([4, 1, 2]);
+});
+
+test.each(["[0]", "[7]", "[1.5]", "[]", "Keep [1]", "```json\n[1]\n```"])(
   "rejects invalid output %s",
   (raw) => expect(parseSelection(raw, 6)).toBeUndefined(),
 );
@@ -82,11 +87,11 @@ test("uses the specified Pi command, scrubs the environment, and kills it on tim
   expect(killed).toEqual(["SIGKILL"]);
 });
 
-test("key answers are ordered arrays of unique in-range integers", () => {
+test("key answers are ordered arrays of in-range integers", () => {
   expect<unknown>(parseKey("[6,1,3]", 6)).toEqual([6, 1, 3]);
   expect(parseKey("[]", 6)).toEqual([]);
   expect<unknown>(parseKey("[4,1]\n\nToo many? Fine.\n[4]\n", 6)).toEqual([4, 1]);
-  for (const raw of ["[0]", "[7]", "[1.5]", "[1,1]", '["3"]', "Here: [1]", "ALL", "null"]) {
+  for (const raw of ["[0]", "[7]", "[1.5]", '["3"]', "Here: [1]", "ALL", "null"]) {
     expect(parseKey(raw, 6)).toBeUndefined();
   }
 });

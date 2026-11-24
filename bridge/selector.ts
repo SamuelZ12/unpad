@@ -33,9 +33,8 @@ export function parseSelection(raw: string, sentenceCount: number, checked = fal
   for (const value of values) {
     const id = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
     if (typeof id !== "number" || !Number.isInteger(id) || id < 1 || id > sentenceCount) return undefined;
-    const sentenceId = id as SentenceId;
-    if (keep.has(sentenceId)) return undefined;
-    keep.add(sentenceId);
+    // Long answers sometimes name an ID twice. The repeat changes nothing.
+    keep.add(id as SentenceId);
   }
 
   if (sentenceCount - keep.size < MIN_FADED) return { kind: "keep-all" };
@@ -109,9 +108,9 @@ export function parseKey(raw: string, count: number): SentenceId[] | undefined {
   } catch {
     return undefined;
   }
-  if (!Array.isArray(values) || !values.every((id) => Number.isInteger(id) && id >= 1 && id <= count)
-    || new Set(values).size !== values.length) return undefined;
-  return values;
+  if (!Array.isArray(values) || !values.every((id) => Number.isInteger(id) && id >= 1 && id <= count)) return undefined;
+  // Pi repeated an ID in 2 of 2 key answers on 581- and 789-sentence essays. Keep its first rank.
+  return [...new Set<SentenceId>(values)];
 }
 
 export async function selectWithKey(
