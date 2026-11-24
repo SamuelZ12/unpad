@@ -1,12 +1,13 @@
 # Toggle and reveal
 
-The toggle changes the shared lens on built-in and added sites. On other sites it changes only the current document's fades. A Shift hold reveals the current page until release.
+The toggle changes the shared lens on built-in and added sites. On other sites it changes only the current document. A Shift hold hides fades and marks until release.
 
 ## Sub-features
 
 - S6 toggles Wang and Warp together.
 - S7 checks a Shift hold, release, and short press.
 - S14 checks both shortcuts while typing.
+- S17 checks that Shift and lens off hide both fades and marks.
 - S12-page-mode checks the browser action with the shared lens off and with an editor focused.
 
 ## How to get to it (user POV)

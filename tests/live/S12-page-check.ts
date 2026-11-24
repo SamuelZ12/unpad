@@ -31,9 +31,10 @@ export default async function S12PageCheck(context: CheckContext) {
     await setAlwaysRun(page, true, action);
     const skipped = await bridge.waitForRequest(index);
     assert.equal(skipped.result, "skip");
-    assert.ok(skipped.source === "cache" || skipped.piCalls === 1);
+    assert.ok(skipped.source === "cache" || skipped.piCalls === 2);
     const entry = await cacheEntry(context, skipped.cacheKey);
     assert.deepEqual(entry.selection, { kind: "skip" });
+    assert.deepEqual(entry.key, []);
     assert.deepEqual(entry.check, { url: repo });
     assert.equal((await waitForState(page, "idle")).faded, 0);
     await poll(() => activeBadge(worker), (badge) => badge === "", 3000);

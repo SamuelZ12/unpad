@@ -14,6 +14,7 @@ export async function openSite(page: Page, url: string) {
 export async function assertUninjected(page: Page) {
   assert.deepEqual(await state(page), { view: undefined, faded: NaN });
   assert.equal(await page.evaluate(() => CSS.highlights.has("filler-cut")), false);
+  assert.equal(await page.evaluate(() => CSS.highlights.has("filler-cut-key")), false);
 }
 
 export function grants(worker: Worker) {

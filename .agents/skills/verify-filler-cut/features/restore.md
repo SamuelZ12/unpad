@@ -1,12 +1,13 @@
 # Restore a sentence
 
-Click faded text to restore the sentence. The bridge logs the restore.
+Click faded text to restore the sentence or click a marked sentence to remove its tint for that page view. The bridge logs these as `restore` and `unmark`.
 
 ## Sub-features
 
 - S8 checks click timing and persistence through toggles and reveal.
 - S9 checks log contents, duplicate clicks, and retry after an outage.
 - S15 checks links inside faded sentences.
+- S17 clicks a marked sentence twice and checks that the other marks remain and the bridge logs one unmark.
 
 ## How to get to it (user POV)
 

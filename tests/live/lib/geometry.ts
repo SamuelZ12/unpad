@@ -35,3 +35,15 @@ export function regionsChanged(before: PNG, after: PNG, boxes: Box[]) {
 export function changedSentences(before: PNG, after: PNG, { sentences }: Geometry, threshold = 8) {
   return sentences.flatMap((boxes, index) => regionsChanged(before, after, boxes) > threshold ? [index + 1] : []);
 }
+
+export function wholeProsePixels(layout: Geometry): Geometry {
+  // Include only pixels fully inside each rect. Inline link bounds can share a fractional edge.
+  return {
+    ...layout,
+    sentences: layout.sentences.map((boxes) => boxes.map(({ x, y, width, height }) => ({
+      x: Math.ceil(x), y: Math.ceil(y),
+      width: Math.floor(x + width) - Math.ceil(x),
+      height: Math.floor(y + height) - Math.ceil(y),
+    }))),
+  };
+}

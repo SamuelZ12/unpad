@@ -55,7 +55,7 @@ export default async function S5(context: CheckContext) {
     try {
       await browser.open(page, "wang");
       const invalid = await bridge.waitForRequest(index);
-      assert.equal(invalid.piCalls, 2);
+      assert.equal(invalid.piCalls, 3); // Two keep attempts and one key attempt.
       assert.match(invalid.error ?? "", /invalid selection twice/);
       await waitForState(page, "idle");
       const rejected = await untouched(root, evidence + "/invalid", 500);

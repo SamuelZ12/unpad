@@ -3,7 +3,8 @@ import type { CheckContext } from "./run";
 import { extensionWorker, withActionBrowser } from "./lib/action";
 import { waitForState } from "./lib/check";
 import { cacheEntry, pickedFades, withBridge } from "./lib/fade";
-import { changedSentences, geometry, installGeometry, regionsChanged } from "./lib/geometry";
+import { changedSentences, geometry, installGeometry, regionsChanged, wholeProsePixels } from "./lib/geometry";
+import { painted as paintState } from "./lib/marks";
 import { poll, save, screenshot } from "./lib/pixels";
 import { activeBadge, articleUrl, assertUninjected, grants, openSite, registrations } from "./lib/sites";
 
@@ -40,8 +41,10 @@ export default async function S12PageMode(context: CheckContext) {
     await assertUninjected(page);
     assert.equal((await context.bridge.requests()).length, cursor);
     await editor.evaluate((input) => input.remove());
-    const layout = await geometry(page);
+    await page.evaluate(() => document.fonts.ready);
+    const layout = wholeProsePixels(await geometry(page));
     const original = (await screenshot(page)).png;
+    await save(context.evidence + "/page-mode-original", original);
 
     await action.trigger(page);
     const faded = await waitForState(page, "faded");
@@ -49,19 +52,21 @@ export default async function S12PageMode(context: CheckContext) {
     const entry = await cacheEntry(context, response.cacheKey);
     assert.equal(entry.check, undefined);
     const selected = pickedFades(entry);
+    const paintIds = [...selected, ...entry.key ?? []];
     assert.equal(faded.faded, selected.length);
     const painted = (await screenshot(page)).png;
     const visible = changedSentences(original, painted, layout);
     assert.ok(visible.length > 0);
-    assert.deepEqual(visible.filter((id) => !selected.includes(id)), [], "Prose outside the picks changed");
+    assert.deepEqual(visible.filter((id) => !paintIds.includes(id)), [], "Prose outside the picks changed");
     await save(context.evidence + "/page-mode-faded", painted);
     await action.trigger(page);
     assert.equal((await waitForState(page, "picks-ready")).faded, 0);
     await poll(() => activeBadge(worker), (badge) => badge === "", 3000);
+    assert.deepEqual(await paintState(page), { marked: 0, faded: 0, marks: [], fades: [] });
     const off = (await screenshot(page)).png;
     await save(context.evidence + "/page-mode-off", off);
     const offPixels = regionsChanged(original, off, layout.sentences.flat());
-    assert.equal(offPixels, 0);
+    assert.equal(offPixels, 0, "Prose pixels changed with the lens off");
 
     await action.trigger(page);
     assert.deepEqual(await waitForState(page, "faded"), faded);
@@ -73,14 +78,14 @@ export default async function S12PageMode(context: CheckContext) {
     await poll(() => page.evaluate(() => document.documentElement.dataset.fillerCutFaded), (count) => count === "0", 2000);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.evaluate(() => document.fonts.ready);
-    const reloadLayout = await geometry(page);
+    const reloadLayout = wholeProsePixels(await geometry(page));
     const reload = (await screenshot(page)).png;
     await Bun.sleep(500);
     const reloadAfter = (await screenshot(page)).png;
     await save(context.evidence + "/page-mode-reloaded", reloadAfter);
     await assertUninjected(page);
     const reloadPixels = regionsChanged(reload, reloadAfter, reloadLayout.sentences.flat());
-    assert.equal(reloadPixels, 0);
+    assert.equal(reloadPixels, 0, "Prose pixels changed after reload");
     assert.deepEqual(await grants(worker), before);
     assert.deepEqual(await registrations(worker), scripts);
     // The page's events are queued and sent like any other. Nothing else is stored.

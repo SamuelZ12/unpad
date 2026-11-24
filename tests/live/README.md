@@ -1,12 +1,12 @@
 # Filler Cut live specification
 
-Filler Cut fades filler in X status pages, Claude blog articles, and articles on sites you add. Key sentences stay at full strength, in the author's words and in their original place. Click the toolbar icon or press Option+Shift+F on macOS or Alt+Shift+F elsewhere. On a new site, this fades only the current document without a permission prompt. Press again to toggle its fades. Reloading or leaving ends page mode. On a built-in or added site, the same action toggles the shared lens.
+Filler Cut fades filler and marks key sentences with a yellow tint in X status pages, Claude blog articles, and articles on sites you add. The author's words stay in place. Click the toolbar icon or press Option+Shift+F on macOS or Alt+Shift+F elsewhere. On a new site, this applies the lens to the current document without a permission prompt. Press again to toggle it. Reloading or leaving ends page mode. On a built-in or added site, the same action toggles the shared lens.
 
 To add a site, right-click the toolbar icon, check **Always run on this site**, and allow access in Chrome's prompt. This turns the lens on and starts it in the open tab. Uncheck the same item to stop automatic fades and remove the grant. Built-in sites show the item checked and disabled. On added sites with the generic extractor, a page needs five non-list blocks of at least 40 words before the extension sends a selection request. Pi checks whether the page is an article in the same call that picks sentences. A skipped page stays untouched and its badge clears. Page mode runs on demand without either article check.
 
 On an update from 0.0.2 or 0.0.3, Filler Cut clears optional site grants made under the old toolbar behavior. Add sites through the menu to resume automatic fades.
 
-Hold Shift alone for 200 ms to see the original until release, or click a faded sentence to bring that sentence back. The bridge records restores in site mode, and the toolbar badge reports the page's state.
+Hold Shift alone for 200 ms to see the original until release. Click a faded sentence to bring it back or a marked sentence to remove its tint for that page view. Links, editors, and text selections keep their usual click behavior. The bridge records restores and unmarks, and the toolbar badge counts fades.
 
 ## Terms
 
@@ -15,6 +15,7 @@ Hold Shift alone for 200 ms to see the original until release, or click a faded 
 - **Lens.** The on or off setting. Site mode shares it across tabs and starts on. Page mode keeps its own setting for the current document.
 - **Faded.** A sentence drawn in its own text colour at 40% alpha. Its text and layout stay the same.
 - **Restored.** A faded sentence that the reader clicked. It stays at full strength for that page view.
+- **Marked.** A kept sentence with a yellow background tint. Documents with at least 20 sentences can show up to one mark per ten sentences, rounded up. A keep-all selection can carry marks.
 - **Untouched.** A screenshot crop of the doc matches the original crop from the same page load. Capture the original before picks arrive or with the lens off.
 
 ## Checks
@@ -35,21 +36,23 @@ Run `bun run verify all` for the numbered checks or pass individual IDs. The def
 | [S10](S10.ts) | Fades and restores survive X rebuilding an article. | Replay or logged-in. Logged-out requests use replay. |
 | [S11](S11.ts) | A second status gets no stale fades, and Back restores Wang's fades from the cache. | All |
 | [S12](S12.ts) | A short X post and an unenabled site stay untouched and send no requests. | Live logged-out pages in every suite |
-| [S12-page-mode](S12-page-mode.ts) | Chrome's toolbar action fades the Anthropic article with the shared lens off. A focused editor blocks activation. Subsequent actions toggle the document and a reload ends page mode. Permissions, registered scripts, and the shared lens setting stay the same. Shown, reveal, and restore events are logged as on any other page. | Live logged-out page in a fresh profile in every suite |
-| [S12-added-site](S12-added-site.ts) | Adding Anthropic registers the exact origin, turns the lens on, and fades the open article and its reload. Removing it clears the fade, grant, and registration. Menu updates follow the active tab and show a built-in site checked and disabled. | Live logged-out pages in a fresh profile in every suite |
+| [S12-page-mode](S12-page-mode.ts) | Chrome's toolbar action fades the Anthropic article with the shared lens off and logs one `shown` event. A focused editor blocks activation. Subsequent actions toggle the document and a reload ends page mode. Permissions, registered scripts, and the shared lens setting stay the same. | Live logged-out page in a fresh profile in every suite |
+| [S12-added-site](S12-added-site.ts) | Adding Anthropic registers the exact origin, turns the lens on, and fades the open article and its reload. Removing it clears the fades, marks, grant, and registration. Menu updates follow the active tab and show a built-in site checked and disabled. | Live logged-out pages in a fresh profile in every suite |
 | [S12-page-check](S12-page-check.ts) | With GitHub added, the Firecrawl README receives SKIP and has an empty badge and unchanged prose pixels. Reload reuses SKIP from cache. SamuelZ12's profile sends zero selection requests. A checked article on added Anthropic still fades. | Live logged-out pages in a fresh profile in every suite |
 | [S13](S13.ts) | The toolbar badge reports pending picks, a fade count, an untouched page, or a bridge failure. | All |
 | [S14](S14.ts) | The lens and reveal keys leave typing alone. | All |
 | [S15](S15.ts) | Links in faded text still work and produce no restore. | All |
 | [S16](S16.ts) | Warp fades from the cache within 1 s after its text is in the DOM. | All |
+| [S17](S17.ts) | Wang shows 1–3 marked sentences with tinted background pixels, no overlapping fades, and an unchanged title. Shift and the lens hide both kinds of paint. Clicking one mark removes it and logs one unmark. Perfloop shows neither marks nor fades. | All |
+| [S18](S18.ts) | Warp shows marks within the cap and zero overlap with the fades. | All |
 
 The reference pages are the [Wang X Article](https://x.com/alexandr_wang/status/2124636606959345776), the [Perfloop X post](https://x.com/tsenart/status/2123483102936785334), and the [Warp article](https://claude.com/blog/how-warp-builds-self-improving-agents-on-claude). Warp's `/blog/` URL redirects to `/resources/articles/`.
 
 ## What a check observes
 
-- **Pixels and DOM.** Compare PNG crops, sentence positions, and snapshots of the page's own text and elements. The fade and unfade take at most 160 ms. With reduced motion they happen immediately. Compare settled frames for equality. Timing checks use the first qualifying frame they capture. The polling helpers aim for a 50 ms interval, and some timing checks also read Chromium's screencast timestamps.
-- **Extension state.** Read `data-filler-cut-state` on `<html>` for `idle`, `waiting`, `picks-ready`, `faded`, or `revealed`. Read `data-filler-cut-faded` for the current painted sentence count. S13 reads the per-tab badge through the service worker with `chrome.action.getBadgeText`.
-- **Bridge evidence.** Read `requests.jsonl` for responses, cache hits, and Pi calls. Read `events.jsonl` for what the reader saw or clicked. The selection timing checks compare the logged response time with the browser's screenshot timestamps.
+- **Pixels and DOM.** Compare PNG crops, sentence positions, and snapshots of the page's own text and elements. Fades and marks animate together over 160 ms. With reduced motion they happen immediately. Compare settled frames for equality. Timing checks use the first qualifying frame they capture. The polling helpers aim for a 50 ms interval, and some timing checks also read Chromium's screencast timestamps.
+- **Extension state.** Read `data-filler-cut-state` on `<html>` for `idle`, `waiting`, `picks-ready`, `faded`, or `revealed`. A painted page with only marks also reports `faded`. Read `data-filler-cut-faded` and `data-filler-cut-marked` for the current counts. S13 reads the per-tab badge through the service worker with `chrome.action.getBadgeText`.
+- **Bridge evidence.** Read `requests.jsonl` for responses, cache hits, and Pi calls. Read `events.jsonl` for what the reader saw or clicked, including the mark count in `shown` and the sentence ID and text in `unmark`. The selection timing checks compare the logged response time with the browser's screenshot timestamps.
 
 ## Findings behind the checks
 
@@ -60,6 +63,6 @@ The reference pages are the [Wang X Article](https://x.com/alexandr_wang/status/
 - An OS-level Alt+Shift+F sent through X11 on Linux Chromium 156 invoked the action once. The page received the modifier events and zero `KeyF` events. macOS Chromium 159 reported an assigned Option+Shift+F shortcut. The macOS login window prevented the OS-level key probe from reaching Chromium.
 - S12-page-mode uses Chromium's `Extensions.triggerAction`. S12-added-site and S12-page-check pre-approve each exact origin in Chrome's extension settings, then route a CDP toolbar gesture to the same handler as the toolbar menu. The checks exercise the real permission request, grant, registration, and menu update calls. Native menu rendering and clicks, Chrome's permission prompt and its buttons, and a physical shortcut require native browser input.
 - The bridge receives docs with 6 to 400 sentences. If picks would fade fewer than 3, it keeps everything so dense posts stay readable. In 5 prototype runs per page, Perfloop would have faded 0 to 1 of 10 sentences and Wang 4 to 7 of 29. The later Wang markup yielded 28 sentences.
-- The bridge cache is keyed by doc, selector version, reader-rules version, and the check URL when present. The check URL contains the origin and pathname. Checked and unchecked requests use different keys. Returning to a page can reuse picks or a SKIP verdict with one bridge request.
+- The bridge cache is keyed by doc, selector version, reader-rules version, and the check URL when present. Key-enabled requests use a separate selector version that includes the key prompt and mark limits. Eligible cold requests run the two Pi calls in parallel. The bridge discards invalid key answers and keeps only key IDs that survived the keep selection. A SKIP verdict carries an empty key array. Legacy requests retain their original cache and one-call selector behavior.
 
 The measurement setup and raw paths are in `~/.pi/agent/filler-cut/v0-plan-proto/FINDINGS.md`.

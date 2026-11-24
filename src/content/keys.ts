@@ -3,7 +3,7 @@ function isEditor(target: EventTarget | null) {
     (target.isContentEditable || target.matches("input, textarea, select"));
 }
 
-export function isEditing(event: KeyboardEvent) {
+export function isEditing(event: Event) {
   return event.composedPath().some(isEditor);
 }
 

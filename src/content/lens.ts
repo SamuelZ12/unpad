@@ -1,8 +1,8 @@
-import { candidates, fadedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
+import { candidates, fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
 import type { Doc } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
 import { extract, type AnchoredDoc } from "./anchor";
-import { fadedAtPoint, listenForRestore } from "./click";
+import { paintedAtPoint, listenForPaintClick } from "./click";
 import { createLog } from "./log";
 import { listenForHold } from "./hold";
 import { hasFocusedEditor, listenForToggle } from "./keys";
@@ -37,27 +37,31 @@ function start() {
     const current = currentView();
     html.dataset.fillerCutState = current;
     let fadedTotal = 0;
+    let markedTotal = 0;
     let readyTotal = 0;
     let failed = false;
     for (const { doc } of anchoredDocs) {
       const faded = fadedIds(state, doc.key).length;
+      const marks = markedIds(state, doc.key).length;
       fadedTotal += faded;
+      markedTotal += marks;
       const entry = state.docs.get(doc.key);
       const picks = entry?.picks;
       if (entry && current === "picks-ready") readyTotal += candidates(entry).length;
       failed ||= picks?.kind === "failed";
-      if (!faded || picks?.kind !== "ready" || shown.has(doc.key)) continue;
+      if ((!faded && !marks) || picks?.kind !== "ready" || shown.has(doc.key)) continue;
       shown.add(doc.key);
       void log({
         type: "shown", cacheKey: picks.cacheKey,
-        total: doc.sentences.length, faded,
+        total: doc.sentences.length, faded, marks,
       }).catch(console.warn);
     }
     html.dataset.fillerCutFaded = String(fadedTotal);
+    html.dataset.fillerCutMarked = String(markedTotal);
     let badge = "";
     if (current === "waiting") badge = "…";
-    else if (current === "faded") badge = String(fadedTotal);
-    else if (current === "picks-ready") badge = String(readyTotal);
+    else if (current === "faded" && fadedTotal) badge = String(fadedTotal);
+    else if (current === "picks-ready" && readyTotal) badge = String(readyTotal);
     else if (failed) badge = "!";
     if (mode === "page" && !state.lensOn) badge = "";
     if (badge !== lastBadge) {
@@ -68,13 +72,13 @@ function start() {
 
   function dispatch(event: PageEvent) {
     state = reduce(state, event);
-    render(event.type !== "restore" && event.type !== "navigated");
+    render(event.type !== "restore" && event.type !== "unmark" && event.type !== "navigated");
   }
 
   async function requestPicks(doc: Doc, check: SelectRequest["check"], requestedOn: number) {
     const isCurrent = () => requestedOn === pageView && href === location.href;
     try {
-      const answer: unknown = await chrome.runtime.sendMessage({ type: "select", doc: { ...doc, check } });
+      const answer: unknown = await chrome.runtime.sendMessage({ type: "select", doc: { ...doc, check, key: true } });
       const picks = parseSelectResponse(answer);
       if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
       if (isCurrent()) dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
@@ -178,14 +182,14 @@ function start() {
     },
   );
 
-  listenForRestore((x, y) => {
-    const target = fadedAtPoint(document, x, y, anchoredDocs, state);
+  listenForPaintClick((x, y) => {
+    const target = paintedAtPoint(document, x, y, anchoredDocs, state);
     if (!target) return;
     const entry = state.docs.get(target.docKey);
     if (entry?.picks.kind !== "ready") return;
-    dispatch({ type: "restore", ...target });
+    dispatch(target);
     void log({
-      type: "restore", cacheKey: entry.picks.cacheKey, sentenceId: target.id,
+      type: target.type, cacheKey: entry.picks.cacheKey, sentenceId: target.id,
       text: entry.doc.sentences[target.id - 1],
     }).catch(console.warn);
   });

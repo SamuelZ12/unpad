@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import { PNG } from "pngjs";
-import type { CacheKey, Selection } from "../../../src/shared/types";
-import type { SelectRequest } from "../../../src/shared/wire";
+import type { SelectRequest, SelectResponse } from "../../../src/shared/wire";
 import type { CheckContext } from "../run";
 import { state, type Reference } from "./browser";
 import { atMost, toggle, waitForState, withBrowser } from "./check";
@@ -11,9 +10,7 @@ import { save, screenshot, screenshotBytes } from "./pixels";
 
 type Browser = Parameters<Parameters<typeof withBrowser>[1]>[0];
 
-export async function cacheEntry(context: CheckContext, cacheKey: string | null): Promise<SelectRequest & {
-  cacheKey: CacheKey; selection: Selection;
-}> {
+export async function cacheEntry(context: CheckContext, cacheKey: string | null): Promise<Omit<SelectRequest, "key"> & SelectResponse> {
   assert.ok(cacheKey, "Bridge did not log a cache key");
   return Bun.file(`${context.bridge.data}/cache/${cacheKey}.json`).json();
 }
@@ -49,7 +46,9 @@ export async function studyFade(
   if (failure) throw failure;
   assert.ok(response);
   assert.equal(response.result, "keep", JSON.stringify(response));
-  const expected = pickedFades(await cacheEntry(context, response.cacheKey));
+  const entry = await cacheEntry(context, response.cacheKey);
+  const expected = pickedFades(entry);
+  const paintIds = [...expected, ...entry.key ?? []];
   assert.ok(expected.length >= minimum, `Bridge faded ${expected.length}, expected at least ${minimum}`);
   assert.deepEqual(await state(page), { view: "faded", faded: expected.length });
   const layout = await geometry(page);
@@ -64,8 +63,9 @@ export async function studyFade(
   await save(context.evidence + "/" + label + "-faded", settled.png);
 
   const changed = changedSentences(original.png, settled.png, layout);
-  assert.deepEqual(changed.filter((id) => !expected.includes(id)), [], `Unexpected pixel changes, changed ids ${changed}`);
-  assert.ok(changed.length >= minimum, `Saw ${changed.length} faded sentences of ${expected.length} in screenshot`);
+  assert.deepEqual(changed.filter((id) => !paintIds.includes(id)), [], `Unexpected pixel changes, changed ids ${changed}`);
+  const observed = changed.filter((id) => expected.includes(id)).length;
+  assert.ok(observed >= minimum, `Saw ${observed} faded sentences of ${expected.length} in screenshot`);
   if (name === "wang") assert.ok(layout.protectedText.length >= 2, "Title and byline were not both located");
   const protectedPixels = regionsChanged(original.png, settled.png, layout.protectedText);
   assert.equal(protectedPixels, 0, "Title/byline pixels changed");
@@ -77,13 +77,13 @@ export async function studyFade(
     if (frame.at < responseAt) return false;
     const ids = changedSentences(original.png, PNG.sync.read(frame.bytes), layout);
     return ids.filter((id) => expected.includes(id)).length >= minimum &&
-      ids.every((id) => expected.includes(id));
+      ids.every((id) => paintIds.includes(id));
   });
   assert.ok(first, `No qualifying screenshot in ${frames.length} samples`);
   const elapsed = first.at - responseAt;
   await Bun.write(context.evidence + "/" + label + "-first.png", first.bytes);
   atMost(elapsed, 1000, "Bridge response to faded pixels");
-  return { expected, original, settled, layout, elapsed, response, protectedPixels, observed: changed.length };
+  return { expected, original, settled, layout, elapsed, response, protectedPixels, observed };
 }
 
 

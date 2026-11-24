@@ -1,6 +1,6 @@
 # Automatic fades and badge
 
-Eligible pages fade after picks arrive. The badge shows the current selection state.
+Eligible pages show fades and key sentence marks after picks arrive. The badge counts fades.
 
 ## Sub-features
 
@@ -10,6 +10,7 @@ Eligible pages fade after picks arrive. The badge shows the current selection st
 - S12-added-site checks the exact origin grant, immediate fades, a reload, and removal.
 - S12-page-check checks a skipped README, a profile that sends nothing, and an article that fades.
 - S13 reads the per-tab toolbar badge.
+- S17 and S18 check tint, mark limits, and separation from the fades.
 
 ## How to get to it (user POV)
 
@@ -17,8 +18,8 @@ Open an X status page, a Claude blog article, or an article on a site you added.
 
 ## Driving it with Playwright
 
-Use a fresh test profile and a test bridge. Run `bun run verify S1 S2 S3 S4 S5 S12 S12-page-mode S12-added-site S12-page-check S13`. Check the per-page fade counts, pixel comparisons, request log, and badge text in the results.
+Use a fresh test profile and a test bridge. Run `bun run verify S1 S2 S3 S4 S5 S12 S12-page-mode S12-added-site S12-page-check S13 S17 S18`. Check the per-page fade and mark counts, pixel comparisons, request log, and badge text in the results.
 
 ## Gotchas
 
-The first uncached selection calls Pi. The site checks pre-approve each origin in Chrome settings and drive the same handler as the toolbar menu. S12-page-mode invokes the toolbar action through CDP.
+An uncached extension request on a document with at least 20 sentences makes two Pi calls in parallel. The site checks pre-approve each origin in Chrome settings and drive the same handler as the toolbar menu. S12-page-mode invokes the toolbar action through CDP.

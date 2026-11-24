@@ -17,8 +17,9 @@ export default async function S10(context: CheckContext) {
   const replay = context.mode === "replay";
   const viewport = replay ? { width: 950, height: 650 } : undefined;
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
-    const { faded, point } = await restoreOne(context, browser, page, false);
+    const { faded, point, entry } = await restoreOne(context, browser, page, false);
     const remaining = faded.filter((id) => id !== point.id);
+    const painted = [...remaining, ...entry.key ?? []].sort((a, b) => a - b);
     await page.evaluate(() => window.scrollTo(0, 0));
     const unscrolled = await geometry(page);
     const sampleId = remaining.find((id) => unscrolled.sentences[id - 1].some((rect) => rect.width > 16));
@@ -72,7 +73,7 @@ export default async function S10(context: CheckContext) {
           maxHeight: page.viewportSize()!.height, everyNthFrame: 1,
         });
       }
-      assert.deepEqual(changedSentences(original.png, before.png, pageGeometry(layout)), remaining, "Initial faded pixels");
+      assert.deepEqual(changedSentences(original.png, before.png, pageGeometry(layout)), painted, "Initial faded and marked pixels");
       const requests = (await context.bridge.requests()).length;
       const times: number[] = [];
       let deepest = 0;
@@ -136,7 +137,7 @@ export default async function S10(context: CheckContext) {
         const after = await captureClip(page, session, whole);
         const rebuilt = await geometry(page);
         assert.equal(rebuilt.doc.key, layout.doc.key);
-        assert.deepEqual(changedSentences(original.png, after.png, pageGeometry(rebuilt)), remaining, "Faded sentences after rebuild");
+        assert.deepEqual(changedSentences(original.png, after.png, pageGeometry(rebuilt)), painted, "Faded and marked sentences after rebuild");
         await save(`${context.evidence}/rebuild-${i + 1}-full`, after.png);
       }
 
