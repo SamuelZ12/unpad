@@ -34,7 +34,7 @@ await rename(`${outdir}/sw.js`, `${outdir}/${worker}`);
 
 await Bun.write(`${outdir}/manifest.json`, JSON.stringify({
   ...manifest,
-  background: { service_worker: worker },
+  background: { ...manifest.background, service_worker: worker },
   // Chrome match patterns grant access by scheme and host.
   host_permissions: [`${bridge.protocol}//${bridge.hostname}/*`],
 }, null, 2) + "\n");
