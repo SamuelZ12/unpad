@@ -6,19 +6,29 @@ import { fadedAtPoint, listenForRestore } from "./click";
 import { createLog } from "./log";
 import { listenForHold } from "./hold";
 import { listenForToggle } from "./keys";
+import { observePage } from "./observe";
 import { createPainter } from "./paint";
 
 const paint = createPainter();
-const log = createLog(location.href);
+let href = location.href;
+let log = createLog(href);
+let pageView = 0;
+let scanVersion = 0;
 const shown = new Set<Doc["key"]>();
 
 let state: PageState = { lensOn: false, holding: false, docs: new Map() };
 let anchoredDocs: AnchoredDoc[] = [];
 
+function currentView() {
+  if (anchoredDocs.length === state.docs.size) return view(state);
+  const visible = new Set(anchoredDocs.map(({ doc }) => doc.key));
+  return view({ ...state, docs: new Map([...state.docs].filter(([key]) => visible.has(key))) });
+}
+
 function render(animate = true) {
   paint(anchoredDocs, state, animate);
   const html = document.documentElement;
-  html.dataset.fillerCutState = view(state);
+  html.dataset.fillerCutState = currentView();
   let fadedTotal = 0;
   for (const { doc } of anchoredDocs) {
     const faded = fadedIds(state, doc.key).length;
@@ -36,43 +46,55 @@ function render(animate = true) {
 
 function dispatch(event: PageEvent) {
   state = reduce(state, event);
-  render(event.type !== "restore");
+  render(event.type !== "restore" && event.type !== "navigated");
 }
 
-async function requestPicks(doc: Doc) {
+async function requestPicks(doc: Doc, requestedOn: number) {
+  const isCurrent = () => requestedOn === pageView && href === location.href;
   try {
     const answer: unknown = await chrome.runtime.sendMessage({ type: "select", doc });
     const picks = parseSelectResponse(answer);
     if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
-    dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
+    if (isCurrent()) dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
   } catch (error) {
-    dispatch({ type: "picks-failed", docKey: doc.key, reason: String(error) });
+    if (isCurrent()) dispatch({ type: "picks-failed", docKey: doc.key, reason: String(error) });
   }
 }
 
 async function scan() {
   const start = performance.now();
-  const docs = await extract(document, new URL(location.href));
-  anchoredDocs = docs;
-  if (docs.length) initialRender.disconnect();
+  const version = ++scanVersion;
+  const docs = await extract(document, new URL(href));
+  if (version !== scanVersion || href !== location.href) return;
+
+  const previous = anchoredDocs;
+  anchoredDocs = docs.filter(({ root }) => root.isConnected);
+  const rebuilt = anchoredDocs.some(({ root, doc }) =>
+    state.docs.has(doc.key) && !previous.some((prior) => prior.root === root));
+
   if (process.env.FILLER_CUT_DEV === "1") {
     document.documentElement.dataset.fillerCutDebug = JSON.stringify({
-      docs: docs.map(({ doc }) => doc),
+      docs: anchoredDocs.map(({ doc }) => doc),
       extractMs: performance.now() - start,
     });
   }
-  for (const { doc } of docs) {
+  for (const { doc } of anchoredDocs) {
     if (state.docs.has(doc.key)) continue;
     dispatch({ type: "doc-found", doc });
-    void requestPicks(doc);
+    void requestPicks(doc, pageView);
   }
-  render();
+  render(!rebuilt && anchoredDocs.length > 0);
 }
 
-
-// X can stream the status after the content script starts.
-const initialRender = new MutationObserver(() => void scan());
-initialRender.observe(document.documentElement, { childList: true, subtree: true });
+function navigate() {
+  href = location.href;
+  pageView++;
+  anchoredDocs = [];
+  shown.clear();
+  log = createLog(href);
+  dispatch({ type: "navigated" });
+  void scan();
+}
 
 let lensChanges = 0;
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -88,7 +110,7 @@ listenForToggle(() => {
 listenForHold(
   () => dispatch({ type: "hold-start" }),
   (heldMs) => {
-    const revealed = view(state) === "revealed";
+    const revealed = currentView() === "revealed";
     dispatch({ type: "hold-end" });
     if (revealed) void log({ type: "reveal", heldMs }).catch(console.warn);
   },
@@ -108,5 +130,6 @@ listenForRestore((x, y) => {
 
 void chrome.storage.local.get("lensOn").then(({ lensOn }) => {
   if (!lensChanges) dispatch({ type: "lens-set", on: lensOn !== false });
+  observePage(() => void scan(), navigate);
   return scan();
 });

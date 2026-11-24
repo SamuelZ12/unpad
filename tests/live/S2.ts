@@ -5,13 +5,14 @@ import type { CheckContext } from "./run";
 import { roots, type Reference } from "./lib/browser";
 import { waitForState, withBrowser } from "./lib/check";
 import { cacheEntry, withBridge } from "./lib/fade";
+import { docCrop, save } from "./lib/pixels";
 
 function snapshot(root: Locator) {
   return root.evaluate((element: HTMLElement) => ({
     text: element.innerText,
     count: element.querySelectorAll("*").length,
     extensionAttributes: [element, ...element.querySelectorAll("*")].flatMap((child) =>
-      child.getAttributeNames().filter((name) => name.includes("filler-cut"))).length,
+      [...child.getAttributeNames(), ...child.classList].filter((name) => name.includes("filler-cut"))).length,
     html: element.outerHTML,
   }));
 }
@@ -53,6 +54,7 @@ export default async function S2(context: CheckContext) {
       const cached = await cacheEntry(context, row.cacheKey);
       const text = collapse(after.text);
       assert.ok(cached.sentences.every((sentence) => text.includes(sentence)), name);
+      await save(context.evidence + "/" + name, await docCrop(root));
       results.push(`${name}: ${cached.sentences.length} verbatim sentences, ${after.count} elements, 0 extension attributes`);
     }
     return results.join("; ");

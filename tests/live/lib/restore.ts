@@ -11,12 +11,15 @@ import { crop, difference, poll, save, screenshot, type Box } from "./pixels";
 type Browser = Parameters<Parameters<typeof withBrowser>[1]>[0];
 
 export async function findClick(page: Page, ids: number[]) {
+  const height = page.viewportSize()?.height ?? 900;
+  const bottom = height - 80;
+  const target = Math.min(360, height * 0.45);
   for (const id of ids) {
     const rects = (await geometry(page)).sentences[id - 1];
     if (!rects.length) continue;
-    await page.evaluate((y) => window.scrollBy(0, y - 360), rects[0].y);
+    await page.evaluate((delta) => window.scrollBy(0, delta), rects[0].y - target);
     const current = (await geometry(page)).sentences[id - 1]
-      .filter((rect) => rect.width > 16 && rect.y > 60 && rect.y < 570)
+      .filter((rect) => rect.width > 16 && rect.y > 60 && rect.y < bottom)
       .sort((a, b) => b.width - a.width);
     for (const rect of current) {
       const x = rect.x + rect.width / 2;
@@ -49,6 +52,10 @@ export async function restoreOne(context: CheckContext, browser: Browser, page: 
   const index = (await context.bridge.requests()).length;
   await browser.open(page, "wang");
   const first = await waitForState(page, "faded");
+  if (measure) {
+    await page.waitForLoadState("load", { timeout: 8000 }).catch(() => {});
+    await Bun.sleep(500);
+  }
   await page.evaluate(() => document.fonts.ready);
   const row = await context.bridge.waitForRequest(index);
   const entry = await cacheEntry(context, row.cacheKey);
@@ -106,11 +113,19 @@ export async function restoreOne(context: CheckContext, browser: Browser, page: 
     await page.mouse.click(point.x, point.y);
     const clickAt = await clickTime();
     assert.ok(clickAt > 0);
-    const forced = session.send("Page.captureScreenshot", { format: "png", optimizeForSpeed: true })
-      .then(({ data }) => { frames.push({ at: Date.now(), data }); });
+    let capturePending = false;
+    const capture = () => {
+      if (capturePending) return;
+      capturePending = true;
+      void session.send("Page.captureScreenshot", { format: "png", optimizeForSpeed: true })
+        .then(({ data }) => { frames.push({ at: Date.now(), data }); })
+        .catch(() => {}).finally(() => { capturePending = false; });
+    };
     let cursor = frames.findIndex(({ at }) => at >= clickAt);
     const timings: { at: number; changed: number }[] = [];
+    const matching: { at: number; png: PNG }[] = [];
     const after = await poll(async () => {
+      capture();
       if (cursor < 0) cursor = frames.findIndex(({ at }) => at >= clickAt);
       if (cursor < 0) return;
       while (cursor < frames.length) {
@@ -118,10 +133,11 @@ export async function restoreOne(context: CheckContext, browser: Browser, page: 
         if (!frame) continue;
         const changed = difference(frame.png, original);
         timings.push({ at: frame.at, changed });
-        if (changed === 0) return frame;
+        if (changed === 0) matching.push(frame);
       }
+      const earliest = matching.sort((a, b) => a.at - b.at)[0];
+      if (earliest && (earliest.at - clickAt <= 100 || Date.now() - earliest.at >= 80)) return earliest;
     }, (frame) => !!frame, 1000);
-    await forced;
     await session.send("Page.stopScreencast");
     assert.ok(after, "No screencast frame matched the original sentence");
     const elapsed = after.at - clickAt;
@@ -132,11 +148,11 @@ export async function restoreOne(context: CheckContext, browser: Browser, page: 
     assert.equal((await state(page)).faded, first.faded - 1);
     const restored = await screenshot(page);
     const layout = await geometry(page);
-    const changed = changedSentences(before.png, restored.png, layout);
-    assert.deepEqual(changed, [point.id], `Changed sentence ids ${changed}`);
+    const changed = changedSentences(before.png, restored.png, layout, 0);
     await save(context.evidence + "/before-click", before.png);
     await save(context.evidence + "/after-click", restored.png);
     await save(context.evidence + "/clicked-sentence", after.png);
+    assert.deepEqual(changed, [point.id], `Changed sentence ids ${changed}`);
     atMost(elapsed, 100, `Click to restored pixels (state in ${(restoreAt - clickAt).toFixed(1)} ms)`);
 
     const scroll = await page.evaluate(() => scrollY);
@@ -152,7 +168,7 @@ export async function restoreOne(context: CheckContext, browser: Browser, page: 
           ...rect, x: rect.x + 3, width: rect.width - 6,
         }))),
       };
-      assert.deepEqual(changedSentences(restored.png, image, prose), [], label);
+      assert.deepEqual(changedSentences(restored.png, image, prose, 0), [], label);
     }
     await toggle(page);
     await waitForState(page, "picks-ready");

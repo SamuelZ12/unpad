@@ -7,8 +7,8 @@ import { poll } from "./pixels";
 
 export async function withBrowser<T>(context: CheckContext, work: (
   browser: Awaited<ReturnType<typeof launch>>, page: Page,
-) => Promise<T>) {
-  const browser = await launch(context.mode);
+) => Promise<T>, headless = true) {
+  const browser = await launch(context.mode, headless);
   try {
     const page = browser.context.pages()[0];
     await browser.context.addInitScript(() => {
@@ -16,7 +16,7 @@ export async function withBrowser<T>(context: CheckContext, work: (
       Object.defineProperty(window, "fillerCutTrace", { value: trace });
       new MutationObserver(() => {
         const view = document.documentElement?.dataset.fillerCutState;
-        if (view && view !== trace.at(-1)?.view) trace.push({ view, at: Date.now() });
+        if (view && view !== trace.at(-1)?.view) trace.push({ view, at: performance.timeOrigin + performance.now() });
       }).observe(document, { attributes: true, subtree: true, attributeFilter: ["data-filler-cut-state"] });
     });
     return await work(browser, page);

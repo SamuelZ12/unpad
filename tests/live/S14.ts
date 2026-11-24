@@ -3,6 +3,7 @@ import type { CheckContext } from "./run";
 import { state } from "./lib/browser";
 import { toggle, trace, waitForState, withBrowser } from "./lib/check";
 import { withBridge } from "./lib/fade";
+import { save, screenshot } from "./lib/pixels";
 
 export default async function S14(context: CheckContext) {
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
@@ -19,6 +20,7 @@ export default async function S14(context: CheckContext) {
     await page.keyboard.up("Shift");
     assert.equal((await trace(page)).length, before);
     assert.equal(await field.inputValue(), "reader@example.com");
+    await save(context.evidence + "/newsletter", (await screenshot(page)).png);
     return "18 characters typed, 1000 ms Shift hold, 0 state transitions";
   }));
 }

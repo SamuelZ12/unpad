@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { urls } from "./lib/browser";
 import { atMost, waitForState, withBrowser } from "./lib/check";
-import { poll } from "./lib/pixels";
+import { poll, save, screenshot } from "./lib/pixels";
 import { findClick, restoreOne } from "./lib/restore";
 
 export default async function S9(context: CheckContext) {
@@ -52,6 +52,7 @@ export default async function S9(context: CheckContext) {
       assert.deepEqual(retries.map((event) => event.sentenceId), [point.id, second.id]);
       assert.equal(retries[1].text, entry.sentences[second.id - 1]);
       assert.equal(flushed.filter((event) => event.type === "shown").length, 1);
+      await save(context.evidence + "/second-restore", (await screenshot(page)).png);
       return `1 shown (${shown[0].faded}/${shown[0].total}), first restore logged in ${logMs.toFixed(1)} ms, repeat added 0 events, offline restore delivered ${retryMs} ms after next event`;
     });
   } finally {

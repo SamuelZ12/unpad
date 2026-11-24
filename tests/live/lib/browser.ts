@@ -15,6 +15,7 @@ export const roots = {
   perfloop: "main article div[dir=auto][lang], [data-testid=tweetText]",
   warp: "article .text-rich-text--article",
 };
+let lastLoggedInLoad = 0;
 const fixtures = {
   wang: "x-loggedin-article-wang.html",
   perfloop: "x-loggedin-post-perfloop.html",
@@ -30,7 +31,7 @@ export async function fixture(name: Exclude<Reference, "warp">) {
   </style><main><div data-testid=cellInnerDiv>${article}</div></main>`;
 }
 
-export async function launch(mode: Mode) {
+export async function launch(mode: Mode, headless = true) {
   const temporary = mode !== "logged-in";
   const profile = temporary
     ? await mkdtemp("/tmp/filler-chrome-")
@@ -41,7 +42,7 @@ export async function launch(mode: Mode) {
   };
   try {
     const context = await chromium.launchPersistentContext(profile, {
-      channel: "chromium", headless: true, viewport: { width: 1280, height: 900 },
+      channel: "chromium", headless, viewport: { width: 1280, height: 900 },
       userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/159.0.0.0 Safari/537.36",
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     });
@@ -52,16 +53,26 @@ export async function launch(mode: Mode) {
         await route.fulfill({ contentType: "text/html", body: await fixture(name) });
       });
     }
-    let lastLoad = 0;
     async function open(page: Page, name: Reference) {
-      if (!temporary) await Bun.sleep(Math.max(0, lastLoad + 3000 - Date.now()));
-      lastLoad = Date.now();
-      const response = await page.goto(urls[name], { waitUntil: "domcontentloaded" });
+      if (!temporary) await Bun.sleep(Math.max(0, lastLoggedInLoad + 3000 - Date.now()));
+      const response = await page.goto(urls[name], { waitUntil: "domcontentloaded" }).finally(() => {
+        if (!temporary) lastLoggedInLoad = Date.now();
+      });
       const root = page.locator(roots[name]).first();
       try {
         await root.waitFor({ state: "visible", timeout: 15_000 });
       } catch {
         throw new Error(`${name}: HTTP ${response?.status()} at ${page.url()}, missing doc: ${(await page.locator("body").innerText()).slice(0, 240)}`);
+      }
+      if (!temporary && name !== "warp") {
+        const signedIn = await page.evaluate(() => ({
+          app: !!document.querySelector("[data-testid=primaryColumn]"),
+          account: !!document.querySelector("[data-testid=SideNav_AccountSwitcher_Button]"),
+          publicPage: !!document.querySelector("[data-article-body-html], a[href='/login']"),
+        }));
+        if (!signedIn.app || !signedIn.account) {
+          throw new Error(`X test profile did not open the signed-in app (app=${signedIn.app}, account=${signedIn.account}, public frontend=${signedIn.publicPage})`);
+        }
       }
       return root;
     }

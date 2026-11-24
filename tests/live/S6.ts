@@ -45,14 +45,14 @@ export default async function S6(context: CheckContext) {
     await waitForState(warp, "faded", 5000);
     await Bun.sleep(180);
     const c = (await screenshot(page)).png;
-    assert.deepEqual(changedSentences(a, c, layout), [], "C differs from A");
+    assert.deepEqual(changedSentences(a, c, layout, 0), [], "C differs from A");
     // One more untouched crop supplies the reference in this page load.
     await press(page, "picks-ready");
     await Bun.sleep(180);
     const original = (await screenshot(page)).png;
     await Promise.all(([["A", a], ["B", b], ["C", c], ["original", original]] as const).map(([label, png]) =>
       save(`${context.evidence}/${label}`, png)));
-    assert.deepEqual(changedSentences(b, original, layout), [], "B differs from the untouched crop");
+    assert.deepEqual(changedSentences(b, original, layout, 0), [], "B differs from the untouched crop");
     const changed = changedSentences(a, b, layout);
     assert.ok(changed.length > 0, "A and B have identical sentence pixels");
     atMost(off, 100, "Toggle off state");

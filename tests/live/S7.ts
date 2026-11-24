@@ -56,8 +56,8 @@ export default async function S7(context: CheckContext) {
     const visible = await geometry(page);
     await Promise.all([["original", original], ["faded", faded], ["held", revealed], ["released", refaded]]
       .map(([label, frame]) => save(context.evidence + "/" + label, (frame as typeof original).png)));
-    assert.deepEqual(changedSentences(original.png, revealed.png, visible), []);
-    assert.deepEqual(changedSentences(faded.png, refaded.png, visible), []);
+    assert.deepEqual(changedSentences(original.png, revealed.png, visible, 0), []);
+    assert.deepEqual(changedSentences(faded.png, refaded.png, visible, 0), []);
     assert.ok(changedSentences(original.png, faded.png, visible).length > 0, "No changed sentence visible in the middle");
     const scrollDrift = Math.max(before.scroll, during.scroll, after.scroll) - Math.min(before.scroll, during.scroll, after.scroll);
     const topDrift = Math.max(before.top, during.top, after.top) - Math.min(before.top, during.top, after.top);

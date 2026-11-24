@@ -59,7 +59,7 @@ export async function poll<T>(read: () => Promise<T>, done: (value: T) => boolea
     const start = Date.now();
     const value = await read();
     if (done(value)) return value;
-    if (Date.now() >= end) throw new Error(`Timed out after ${timeout} ms, last sample ${JSON.stringify(value)}`);
+    if (Date.now() >= end) throw new Error(`Timed out after ${timeout} ms, last sample ${JSON.stringify(value)?.slice(0, 500)}`);
     await Bun.sleep(Math.max(0, start + 50 - Date.now()));
   }
 }

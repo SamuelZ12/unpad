@@ -32,6 +32,6 @@ export function regionsChanged(before: PNG, after: PNG, boxes: Box[]) {
     count + difference(crop(before, box), crop(after, box)), 0);
 }
 
-export function changedSentences(before: PNG, after: PNG, { sentences }: Geometry) {
-  return sentences.flatMap((boxes, index) => regionsChanged(before, after, boxes) > 8 ? [index + 1] : []);
+export function changedSentences(before: PNG, after: PNG, { sentences }: Geometry, threshold = 8) {
+  return sentences.flatMap((boxes, index) => regionsChanged(before, after, boxes) > threshold ? [index + 1] : []);
 }

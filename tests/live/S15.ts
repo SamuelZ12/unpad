@@ -3,6 +3,7 @@ import type { CheckContext } from "./run";
 import { waitForState, withBrowser } from "./lib/check";
 import { cacheEntry, pickedFades, withBridge } from "./lib/fade";
 import { geometry, installGeometry } from "./lib/geometry";
+import { save, screenshot } from "./lib/pixels";
 
 export default async function S15(context: CheckContext) {
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
@@ -23,6 +24,8 @@ export default async function S15(context: CheckContext) {
       .some((rect) => x >= rect.x && y >= rect.y && x <= rect.x + rect.width && y <= rect.y + rect.height)));
     assert.ok(hit >= 0, `Warp had ${anchors.length} article links and ${faded.faded} faded sentences, with zero intersections`);
     const link = root.locator("a[href]").nth(hit);
+    await link.scrollIntoViewIfNeeded();
+    await save(context.evidence + "/warp-link", (await screenshot(page)).png);
     const from = (await context.bridge.events()).length;
     const href = anchors[hit].href;
     const fadedOnClick = page.evaluate(() => new Promise<number>((resolve) => {

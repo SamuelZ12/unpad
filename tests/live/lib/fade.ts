@@ -57,6 +57,8 @@ export async function studyFade(
   await waitForState(page, "picks-ready");
   await Bun.sleep(180);
   const original = await screenshot(page);
+  await toggle(page);
+  await waitForState(page, "faded");
   await save(context.evidence + "/" + label + "-original", original.png);
   await save(context.evidence + "/" + label + "-faded", settled.png);
 

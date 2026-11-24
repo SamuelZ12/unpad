@@ -28,6 +28,6 @@ export default async function S16(context: CheckContext) {
     const elapsed = (await trace(page)).find(({ view }) => view === "faded")!.at - textAt;
     await save(context.evidence + "/cached", await docCrop(root));
     atMost(elapsed, 1000, "Article text to faded");
-    return `${elapsed} ms from article text, ${row.ms.toFixed(1)} ms bridge cache hit, 0 Pi calls`;
+    return `${elapsed.toFixed(1)} ms from article text, ${row.ms.toFixed(1)} ms bridge cache hit, 0 Pi calls`;
   }));
 }

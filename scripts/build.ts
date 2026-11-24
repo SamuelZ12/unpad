@@ -16,6 +16,7 @@ await Bun.build({
   naming: "[name].js",
   target: "browser",
   format: "iife",
+  minify: { syntax: true },
   define: {
     "process.env.BRIDGE_URL": JSON.stringify(BRIDGE_URL),
     "process.env.FILLER_CUT_DEV": JSON.stringify(process.env.FILLER_CUT_DEV ?? "0"),

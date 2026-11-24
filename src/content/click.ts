@@ -28,7 +28,7 @@ export function listenForRestore(restore: (x: number, y: number) => void) {
     const endingSelection = wasSelected || selected();
     wasSelected = false;
     if (event.button !== 0 || endingSelection || event.composedPath().some((target) =>
-      target instanceof Element && target.matches("a"))) return;
+      target instanceof Element && target.matches("a, [role=link]"))) return;
     restore(event.clientX, event.clientY);
   }, true);
 }

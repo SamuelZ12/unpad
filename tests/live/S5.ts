@@ -44,7 +44,6 @@ export default async function S5(context: CheckContext) {
     const offline = await untouched(root, evidence + "/offline", 10_000, true);
     const recovered = await withBridge(context, () => studyFade(context, browser, page, "wang", 3, "recovered"));
     await page.setViewportSize({ width: 1280, height: 900 });
-    await toggle(page);
     await bridge.clear();
     const index = (await bridge.requests()).length;
     await bridge.start(true);
