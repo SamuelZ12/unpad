@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { chromium, type Page } from "playwright";
+import { chromium, type Page, type ViewportSize } from "playwright";
 
 export const urls = {
   wang: "https://x.com/alexandr_wang/status/2124636606959345776",
@@ -32,9 +32,10 @@ export async function fixture(name: Exclude<Reference, "warp">) {
 }
 
 export async function launch(
-  mode: Mode, headless = true, videoDir?: string, options: { actionProfile?: string; extension?: string } = {},
+  mode: Mode, headless = true, videoDir?: string,
+  options: { actionProfile?: string; extension?: string; viewport?: ViewportSize } = {},
 ) {
-  const { actionProfile, extension = resolve("dist/extension") } = options;
+  const { actionProfile, extension = resolve("dist/extension"), viewport = { width: 1280, height: 900 } } = options;
   const temporary = mode !== "logged-in";
   if (actionProfile && !temporary) throw new Error("Browser action checks require an isolated profile");
   const profile = actionProfile ?? (temporary
@@ -44,7 +45,6 @@ export async function launch(
     if (temporary && !actionProfile) await rm(profile, { recursive: true, force: true });
   };
   try {
-    const viewport = { width: 1280, height: 900 };
     const context = await chromium.launchPersistentContext(profile, {
       channel: "chromium", headless, viewport,
       recordVideo: videoDir ? { dir: videoDir, size: viewport } : undefined,

@@ -14,9 +14,9 @@ import { detachReplayCell, rebuildReplayCell } from "./lib/replay";
 import { captureClip, restoreOne } from "./lib/restore";
 
 export default async function S10(context: CheckContext) {
+  const replay = context.mode === "replay";
+  const viewport = replay ? { width: 950, height: 650 } : undefined;
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
-    const replay = context.mode === "replay";
-    if (replay) await page.setViewportSize({ width: 950, height: 650 });
     const { faded, point } = await restoreOne(context, browser, page, false);
     const remaining = faded.filter((id) => id !== point.id);
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -147,5 +147,5 @@ export default async function S10(context: CheckContext) {
     } finally {
       await session.detach();
     }
-  }));
+  }, true, viewport));
 }

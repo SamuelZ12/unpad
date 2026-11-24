@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { Page } from "playwright";
+import type { Page, ViewportSize } from "playwright";
 import type { CheckContext } from "../run";
 import type { View } from "../../../src/core/state";
 import { launch, state } from "./browser";
@@ -7,8 +7,8 @@ import { poll } from "./pixels";
 
 export async function withBrowser<T>(context: CheckContext, work: (
   browser: Awaited<ReturnType<typeof launch>>, page: Page,
-) => Promise<T>, headless = true) {
-  const browser = await launch(context.mode, headless, undefined, { extension: context.fallbackExtension });
+) => Promise<T>, headless = true, viewport?: ViewportSize) {
+  const browser = await launch(context.mode, headless, undefined, { extension: context.fallbackExtension, viewport });
   try {
     const page = browser.context.pages()[0];
     await browser.context.addInitScript(() => {
