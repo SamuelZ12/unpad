@@ -1,6 +1,6 @@
 # Navigate and return
 
-Fades stay with their document. Returning to an article restores the appropriate fades after X rebuilds it or after the bridge supplies cached picks.
+Cuts stay with their document. Returning to an article restores the appropriate cuts after X rebuilds it or after the bridge supplies cached picks.
 
 ## Sub-features
 
@@ -10,11 +10,11 @@ Fades stay with their document. Returning to an article restores the appropriate
 
 ## How to get to it (user POV)
 
-On the signed-in X app, scroll from Wang into the replies and back. Follow a status link from Wang and use Back. On Warp, reload a faded article.
+On the signed-in X app, scroll from Wang into the replies and back. Follow a status link from Wang and use Back. On Warp, reload a cut article.
 
 ## Driving it with Playwright
 
-Run `bun run verify S10 S11 S16 --mode=replay`. The checks compare the rebuilt fades, the second status, Wang's return timing, and Warp's cache hit.
+Run `bun run verify S10 S11 S16 --mode=replay`. The checks compare the rebuilt cuts, the second status, Wang's return timing, and Warp's cache hit.
 
 ## Gotchas
 

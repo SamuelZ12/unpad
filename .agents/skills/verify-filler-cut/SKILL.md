@@ -1,6 +1,6 @@
 ---
 name: verify-filler-cut
-description: Verify the Filler Cut Chrome extension with its Playwright checks. Use after changes to selection, page fades, reading controls, navigation, the toolbar badge, or the bridge, and to record the Wang demo.
+description: Verify the Filler Cut Chrome extension with its Playwright checks. Use after changes to selection, cuts, reading controls, navigation, the toolbar badge, or the bridge, and to record the Wang demo.
 ---
 
 # Verify Filler Cut
@@ -34,8 +34,8 @@ Replace `<ids>` with space-separated IDs such as `S1 S8`. To choose a mode for a
 - The logged-in test profile is `~/.pi/agent/filler-cut/x-test-profile` for the throwaway account `@fillercut_test`. Open it only through Playwright's `launchPersistentContext`, as in `tests/live/lib/browser.ts`. A raw Chrome binary stores cookies under a different keychain key. On Nov 23, 2026, this caused the next Playwright launch to drop the session without an error and the login was lost.
 - In the logged-in profile, only load pages, scroll, press keys, and click article text. Leave at least 3 s between page loads. S11 follows its status link within the article.
 - Real Pi calls use Samuel's Claude plan. Warm checks reuse the cache within a run. Set `FILLER_CUT_VERIFY_CACHE` to a previous run's `bridge/cache` directory to seed a new run. Cold checks clear the cache before measuring.
-- Run `bun run verify S17 S18` for key sentence marks, Shift reveal, lens off, click-to-unmark, and the short-document cutoff. The checks save `wang-fades-and-marks.png` and `warp-fades-and-marks.png` and verify the mark count, fade overlap, and Wang's background pixels and event log.
-- Playwright keys reach the content script. They never fire Chrome's browser shortcut. Checks that exercise the fallback page key load a temporary copy of the extension with the browser shortcut unassigned. S8 needs a visible window for accurate compositor timing on macOS. The harness opens one there.
+- Run `bun run verify S17 S18` for key sentence marks, Shift reveal, lens off, click-to-unmark, and the short-document cutoff. The checks verify visible yellow pixels, the mark count, and Wang's event log. S18 saves `warp-cut.png`. Run `bun run verify S19` for both bare-text Paul Graham pages.
+- Playwright keys reach the content script. They never fire Chrome's browser shortcut. Checks that exercise the fallback page key load a temporary copy of the extension with the browser shortcut unassigned. S8 saves dark Wang before and after expanding a run.
 - Run `bun run verify S12-page-mode S12-added-site S12-page-check` for page mode, persistent per-origin access, and the article check. S12-page-mode sends Chrome's toolbar action through CDP. The site checks pre-approve exact origins in Chrome's extension settings and route a CDP toolbar gesture to the menu handler. Native menu interaction, the permission prompt, and a physical shortcut require native browser input.
 - To update a copy that is loaded unpacked in a real Chrome, copy the new build over its folder and have the reader press the reload arrow on the extension's card. Copied files change nothing until then (measured Nov 23 2026: manifest, worker and page script all stayed old). The build names the worker by its content hash because a browser restart alone kept running the old worker next to the new manifest and page script.
 
@@ -51,4 +51,4 @@ Let the harness close its browser contexts and stop its test bridge. It removes 
 
 ## Helpers
 
-Use `bun run verify load` to confirm the extension loads and collect baseline screenshots. Use `bun run verify extract` to inspect sentence counts and compare the live and replay text. Use `bun run verify dark` to measure the 40% alpha blend on Wang.
+Use `bun run verify load` to confirm the extension loads and collect baseline screenshots. Use `bun run verify extract` to inspect sentence counts and compare the live and replay text.
