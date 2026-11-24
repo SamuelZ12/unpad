@@ -42,6 +42,16 @@ export function fadedIds(state: PageState, docKey: DocKey): readonly SentenceId[
   return state.lensOn && !state.holding && entry ? candidates(entry) : [];
 }
 
+export function removedRuns(state: PageState, docKey: DocKey): SentenceId[][] {
+  const runs: SentenceId[][] = [];
+  for (const id of fadedIds(state, docKey)) {
+    const run = runs.at(-1);
+    if (run && id === run.at(-1)! + 1) run.push(id);
+    else runs.push([id]);
+  }
+  return runs;
+}
+
 function marks(entry: DocState): readonly SentenceId[] {
   return entry.picks.kind === "ready" ? entry.picks.key.filter((id) => !entry.unmarked.has(id)) : [];
 }
