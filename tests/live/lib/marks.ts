@@ -3,54 +3,35 @@ import type { Page } from "playwright";
 import type { PNG } from "pngjs";
 import { collapse } from "../../../src/core/segment";
 import { maxMarks } from "../../../src/shared/config";
-import { cacheEntry, pickedFades } from "./fade";
-import { visible } from "./geometry";
+import { cacheEntry, pickedCuts } from "./cut";
 import { crop, type Box } from "./pixels";
 
-export async function painted(page: Page) {
-  const result = await page.evaluate(() => ({
-    marked: Number(document.documentElement.dataset.fillerCutMarked),
-    faded: Number(document.documentElement.dataset.fillerCutFaded),
-    marks: Array.from(CSS.highlights.get("filler-cut-key") ?? [], (range) => range.toString()),
-    fades: Array.from(CSS.highlights.get("filler-cut") ?? [], (range) => range.toString()),
-  }));
-  return { ...result, marks: result.marks.map(collapse).sort(), fades: result.fades.map(collapse).sort() };
+export function marked(page: Page) {
+  return page.evaluate(() => Array.from(CSS.highlights.get("filler-cut-key") ?? [], (range) => ({
+    text: range.toString(),
+    boxes: [...(range as Range).getClientRects()].map(({ x, y, width, height }) => ({ x, y, width, height })),
+  })));
 }
 
-export function assertMarkedSelection(
-  entry: Awaited<ReturnType<typeof cacheEntry>>, paint: Awaited<ReturnType<typeof painted>>,
-) {
-  const fades = pickedFades(entry);
-  const marks = entry.key;
-  assert.ok(marks && marks.length >= 1 && marks.length <= maxMarks(entry.sentences.length));
-  assert.ok(marks.every((id) => !fades.includes(id)), "A key pick was also faded");
-  assert.deepEqual(paint, {
-    marked: marks.length, faded: fades.length,
-    marks: marks.map((id) => entry.sentences[id - 1]).sort(),
-    fades: fades.map((id) => entry.sentences[id - 1]).sort(),
-  });
-  return marks;
+export async function assertMarked(page: Page, entry: Awaited<ReturnType<typeof cacheEntry>>) {
+  const ids = entry.key ?? [];
+  const ranges = await marked(page);
+  assert.ok(ids.length >= 1 && ids.length <= maxMarks(entry.sentences.length));
+  assert.ok(ids.every((id) => !pickedCuts(entry).includes(id)), "A marked sentence was also removed");
+  assert.deepEqual(ranges.map(({ text }) => collapse(text)).sort(), ids.map((id) => entry.sentences[id - 1]).sort());
+  assert.ok(ranges.every(({ boxes }) => boxes.some(({ width, height }) => width > 0 && height > 0)));
+  return ranges;
 }
 
-// The paint animates over 160 ms, and a tall viewport draws slow frames.
-export async function settled(page: Page, on: boolean) {
-  await page.waitForFunction((target) =>
-    getComputedStyle(document.documentElement).getPropertyValue("--filler-cut-mark-opacity").trim() === target,
-  on ? "1" : "0", { timeout: 3000 });
-}
-
-export function tintedPixels(before: PNG, after: PNG, boxes: Box[]) {
-  const tint = [255, 214, 10];
+export function tintedPixels(image: PNG, boxes: readonly Box[]) {
   let count = 0;
-  for (const box of boxes.filter((box) => visible(before, box))) {
-    const original = crop(before, box);
-    const marked = crop(after, box);
-    for (let i = 0; i < original.data.length; i += 4) {
-      // The paper-like backgrounds are nearly neutral.
-      const red = original.data[i];
-      if (Math.abs(red - original.data[i + 1]) > 12 || Math.abs(red - original.data[i + 2]) > 12) continue;
-      if ([0.42, 0.26].some((alpha) => tint.every((channel, j) =>
-        Math.abs(marked.data[i + j] - (original.data[i + j] * (1 - alpha) + channel * alpha)) <= 2))) count++;
+  for (const box of boxes) {
+    if (box.width < 2 || box.height < 2 || box.x < 0 || box.y < 0 ||
+      box.x + box.width > image.width || box.y + box.height > image.height) continue;
+    const { data } = crop(image, box);
+    for (let i = 0; i < data.length; i += 4) {
+      const [r, g, b] = data.subarray(i, i + 3);
+      if (r - g >= 7 && r - g <= 30 && g - b >= 35 && g - b <= 105) count++;
     }
   }
   return count;

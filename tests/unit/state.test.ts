@@ -10,17 +10,18 @@ test("the view is derived from waiting, picks, lens, hold and restores", () => {
   expect(view(initial)).toBe("idle");
   const waiting = reduce(initial, { type: "doc-found", doc });
   expect(view(waiting)).toBe("waiting");
-  const answer = { type: "picks-arrived", docKey: doc.key, cacheKey: "b" as CacheKey, selection: { kind: "keep", keep: [id(1), id(2)] } } as const;
+  const answer = { type: "picks-arrived", docKey: doc.key, cacheKey: "b" as CacheKey, selection: { kind: "keep", keep: [id(1), id(5)] } } as const;
   expect(reduce(initial, answer)).toBe(initial);
   const faded = reduce(waiting, answer);
   expect(reduce(faded, { type: "doc-found", doc })).toBe(faded);
   expect(view(faded)).toBe("faded");
-  expect(fadedIds(faded, doc.key)).toEqual([3, 4, 5, 6].map(id));
+  expect(removedRuns(faded, doc.key)).toEqual([[2, 3, 4].map(id), [id(6)]]);
+  expect(reduce(faded, { type: "restore", docKey: doc.key, ids: [id(3)] })).toBe(faded);
   const revealed = reduce(faded, { type: "hold-start" });
   expect(view(revealed)).toBe("revealed");
   expect(fadedIds(revealed, doc.key)).toEqual([]);
-  const restored = reduce(reduce(revealed, { type: "hold-end" }), { type: "restore", docKey: doc.key, id: id(3) });
-  expect(fadedIds(restored, doc.key)).toEqual([4, 5, 6].map(id));
+  const restored = reduce(reduce(revealed, { type: "hold-end" }), { type: "restore", docKey: doc.key, ids: [2, 3, 4].map(id) });
+  expect(fadedIds(restored, doc.key)).toEqual([id(6)]);
   const off = reduce(restored, { type: "lens-set", on: false });
   expect(view(off)).toBe("picks-ready");
   expect(fadedIds(off, doc.key)).toEqual([]);
@@ -54,12 +55,4 @@ test("marks follow the lens, can be unmarked once, and do not overlap fades", ()
   expect(fadedIds(all, doc.key)).toEqual([]);
   expect(view(all)).toBe("faded");
   expect(view(reduce(all, { type: "hold-start" }))).toBe("revealed");
-});
-
-test("removed runs group adjacent sentence IDs", () => {
-  const waiting = reduce(initial, { type: "doc-found", doc });
-  const ready = reduce(waiting, { type: "picks-arrived", docKey: doc.key, cacheKey: "b" as CacheKey,
-    selection: { kind: "keep", keep: [id(1), id(5)] } });
-  expect(removedRuns(ready, doc.key)).toEqual([[2, 3, 4].map(id), [id(6)]]);
-  expect(removedRuns(reduce(ready, { type: "hold-start" }), doc.key)).toEqual([]);
 });

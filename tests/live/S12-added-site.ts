@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { extensionWorker, setAlwaysRun, withActionBrowser } from "./lib/action";
 import { waitForState } from "./lib/check";
-import { cacheEntry, pickedFades, withBridge } from "./lib/fade";
-import { changedSentences, geometry, installGeometry, regionsChanged, wholeProsePixels } from "./lib/geometry";
-import { painted as paintState } from "./lib/marks";
+import { assertCuts, cacheEntry, pickedCuts, proseHtml, withBridge } from "./lib/cut";
+import { marked } from "./lib/marks";
 import { poll, save, screenshot } from "./lib/pixels";
 import { activeBadge, articleUrl, assertUninjected, grants, openSite, registrations } from "./lib/sites";
 
@@ -12,7 +11,6 @@ export default async function S12AddedSite(context: CheckContext) {
   return withBridge(context, () => withActionBrowser(async (tabs, action) => {
     const page = tabs.pages()[0];
     const worker = await extensionWorker(tabs);
-    await installGeometry(tabs);
     await worker.evaluate(async () => {
       await chrome.storage.local.set({ lensOn: false });
       const update = chrome.contextMenus.update.bind(chrome.contextMenus);
@@ -40,21 +38,17 @@ export default async function S12AddedSite(context: CheckContext) {
     const faded = await waitForState(page, "faded");
     const first = await context.bridge.waitForRequest(index);
     const entry = await cacheEntry(context, first.cacheKey);
-    const selected = pickedFades(entry);
-    const paintIds = [...selected, ...entry.key ?? []];
+    const selected = pickedCuts(entry);
+    const root = page.locator("main article, main").last();
+    await assertCuts(root, entry);
     assert.equal(faded.faded, selected.length);
     await page.evaluate(() => document.fonts.ready);
-    const layout = wholeProsePixels(await geometry(page));
     const painted = (await screenshot(page)).png;
     await save(context.evidence + "/added-site-faded", painted);
     await action.trigger(page);
     assert.equal((await waitForState(page, "picks-ready")).faded, 0);
     const original = (await screenshot(page)).png;
     await save(context.evidence + "/added-site-original", original);
-    const visible = changedSentences(original, painted, layout);
-    const unexpected = visible.filter((id) => !paintIds.includes(id));
-    assert.deepEqual(unexpected, [], "Prose outside the picks changed");
-    assert.ok(visible.some((id) => selected.includes(id)), "No fade is visible");
     await action.trigger(page);
     assert.deepEqual(await waitForState(page, "faded"), faded);
 
@@ -71,9 +65,9 @@ export default async function S12AddedSite(context: CheckContext) {
     await poll(menu, (state) => state?.checked === true && state.enabled, 3000);
 
     await page.evaluate(() => document.fonts.ready);
-    const reloadLayout = wholeProsePixels(await geometry(page));
     await action.trigger(page);
     await waitForState(page, "picks-ready");
+    const restored = await proseHtml(root);
     const reloadOriginal = (await screenshot(page)).png;
     await save(context.evidence + "/added-site-reload-original", reloadOriginal);
     await action.trigger(page);
@@ -83,11 +77,12 @@ export default async function S12AddedSite(context: CheckContext) {
     assert.deepEqual(await grants(worker), before);
     assert.deepEqual(await registrations(worker), []);
     assert.equal((await waitForState(page, "idle")).faded, 0);
-    assert.deepEqual(await paintState(page), { marked: 0, faded: 0, marks: [], fades: [] });
+    assert.deepEqual(await marked(page), []);
+    await assertCuts(root, entry, []);
     await poll(() => activeBadge(worker), (badge) => badge === "", 3000);
     const removed = (await screenshot(page)).png;
     await save(context.evidence + "/added-site-removed", removed);
-    assert.equal(regionsChanged(reloadOriginal, removed, reloadLayout.sentences.flat()), 0, "Removal changed original prose pixels");
+    assert.deepEqual(await proseHtml(root), restored, "Removing access changed prose HTML");
     await page.reload({ waitUntil: "domcontentloaded" });
     await Bun.sleep(500);
     await assertUninjected(page);
@@ -97,6 +92,6 @@ export default async function S12AddedSite(context: CheckContext) {
     await openSite(other, "https://claude.com/");
     assert.equal(new URL(other.url()).hostname, "claude.com");
     await poll(menu, (state) => state?.checked === true && !state.enabled, 3000);
-    return `${match} granted and registered; ${faded.faded}/${entry.sentences.length} faded on add (${visible.length} in screenshot) and on reload; 2 selects, second a cache hit; removal restored prose pixels and reload sent 0 selects; menu update calls matched added, other, and built-in tabs`;
+    return `${match} granted and registered; ${faded.faded}/${entry.sentences.length} removed on add and on reload; 2 selects, second a cache hit; removal restored original HTML and reload sent 0 selects; menu update calls matched added, other, and built-in tabs`;
   }));
 }

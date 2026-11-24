@@ -1,20 +1,22 @@
 import { candidates, fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
-import type { Doc } from "../shared/types";
+import type { Doc, DocKey, SentenceId } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
 import { MIN_MARK_SENTENCES } from "../shared/config";
 import { extract, type AnchoredDoc } from "./anchor";
-import { paintedAtPoint, listenForPaintClick } from "./click";
+import { listenForMarkClick } from "./click";
 import { createLog } from "./log";
 import { listenForHold } from "./hold";
 import { hasFocusedEditor, listenForToggle } from "./keys";
 import { observePage } from "./observe";
-import { createPainter } from "./paint";
+import { createProjection } from "./reconcile";
 import { usesGenericSurface } from "./surfaces";
 
 type Mode = "site" | "page";
 
 function start() {
-  const paint = createPainter();
+  const projection = createProjection((docKey, ids, pin) => {
+    dispatch({ type: "restore", docKey, ids }, pin);
+  });
   let href = location.href;
   let log = createLog(href);
   let pageView = 0;
@@ -32,8 +34,10 @@ function start() {
     return view({ ...state, docs: new Map([...state.docs].filter(([key]) => visible.has(key))) });
   }
 
-  function render(animate = true) {
-    paint(anchoredDocs, state, animate);
+  type Pin = Parameters<typeof projection.reconcile>[2];
+
+  function render(pin?: Pin) {
+    mutate(() => projection.reconcile(anchoredDocs, state, pin));
     const html = document.documentElement;
     const current = currentView();
     html.dataset.fillerCutState = current;
@@ -71,9 +75,22 @@ function start() {
     }
   }
 
-  function dispatch(event: PageEvent) {
-    state = reduce(state, event);
-    render(event.type !== "restore" && event.type !== "unmark" && event.type !== "navigated");
+  function logClicks(type: "restore" | "unmark", docKey: DocKey, ids: readonly SentenceId[]) {
+    const entry = state.docs.get(docKey);
+    if (entry?.picks.kind !== "ready") return;
+    const { cacheKey } = entry.picks;
+    void log(...ids.map((id) => ({
+      type, cacheKey, sentenceId: id, text: entry.doc.sentences[id - 1],
+    }))).catch(console.warn);
+  }
+
+  function dispatch(event: PageEvent, pin?: Pin) {
+    const next = reduce(state, event);
+    if (next === state) return;
+    state = next;
+    render(pin);
+    if (event.type === "restore") logClicks("restore", event.docKey, event.ids);
+    if (event.type === "unmark") logClicks("unmark", event.docKey, [event.id]);
   }
 
   async function requestPicks(doc: Doc, check: SelectRequest["check"], requestedOn: number) {
@@ -98,15 +115,10 @@ function start() {
     const version = ++scanVersion;
     const url = new URL(href);
     const check = mode === "site" && usesGenericSurface(url) ? { url: url.origin + url.pathname } : undefined;
-    const docs = await extract(document, url, !!check);
+    const docs = await extract(document, url, !!check, projection.read);
     if (version !== scanVersion || href !== location.href || (mode === "page" && !state.lensOn)) return;
 
-    const previous = anchoredDocs;
     anchoredDocs = docs.filter(({ root }) => root.isConnected);
-    // X can replace every node in the article when the reader scrolls back.
-    // The same DocKey keeps its picks and restores while the ranges are rebuilt.
-    const rebuilt = anchoredDocs.some(({ root, doc }) =>
-      state.docs.has(doc.key) && !previous.some((prior) => prior.root === root));
 
     if (process.env.FILLER_CUT_DEV === "1") {
       document.documentElement.dataset.fillerCutDebug = JSON.stringify({
@@ -116,10 +128,10 @@ function start() {
     }
     for (const { doc } of anchoredDocs) {
       if (state.docs.has(doc.key)) continue;
-      dispatch({ type: "doc-found", doc });
+      state = reduce(state, { type: "doc-found", doc });
       void requestPicks(doc, check, pageView);
     }
-    render(!rebuilt && anchoredDocs.length > 0);
+    render();
   }
 
   function reset() {
@@ -187,17 +199,7 @@ function start() {
     },
   );
 
-  listenForPaintClick((x, y) => {
-    const target = paintedAtPoint(document, x, y, anchoredDocs, state);
-    if (!target) return;
-    const entry = state.docs.get(target.docKey);
-    if (entry?.picks.kind !== "ready") return;
-    dispatch(target);
-    void log({
-      type: target.type, cacheKey: entry.picks.cacheKey, sentenceId: target.id,
-      text: entry.doc.sentences[target.id - 1],
-    }).catch(console.warn);
-  });
+  listenForMarkClick(projection.marks, ({ docKey, id }) => dispatch({ type: "unmark", docKey, id }));
 
   function togglePage() {
     if (hasFocusedEditor()) return;
@@ -205,7 +207,7 @@ function start() {
     if (state.lensOn) void scan();
   }
 
-  observePage(() => void scan(), navigate);
+  const mutate = observePage(() => void scan(), navigate, projection.onMutations);
   window.addEventListener("pagehide", () => {
     if (mode === "page") stop();
   });

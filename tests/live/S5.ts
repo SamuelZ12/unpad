@@ -1,14 +1,9 @@
-// With the bridge down, Wang is untouched in every sample over 10 s and
-// through 2 toggles. The state is waiting or idle. Restart and reload to see
-// at least 3 faded sentences within 1000 ms of the response, with title and
-// author line unchanged. Clear the cache and reload with invalid output. Wang
-// stays untouched and idle.
 import assert from "node:assert/strict";
 import type { Locator } from "playwright";
 import type { CheckContext } from "./run";
 import { state } from "./lib/browser";
 import { toggle, waitForState, withBrowser } from "./lib/check";
-import { studyFade, withBridge } from "./lib/fade";
+import { referenceCut, withBridge } from "./lib/cut";
 import { difference, docCrop, save } from "./lib/pixels";
 
 async function untouched(root: Locator, path: string, duration: number, press = false) {
@@ -47,7 +42,7 @@ export default async function S5(context: CheckContext) {
     const root = await browser.open(page, "wang");
     await page.evaluate(() => document.fonts.ready);
     const offline = await untouched(root, evidence + "/offline", 10_000, true);
-    const recovered = await withBridge(context, () => studyFade(context, browser, page, "wang", 3, "recovered"));
+    const recovered = await withBridge(context, () => referenceCut(context, browser, page, "wang"));
     await page.setViewportSize({ width: 1280, height: 900 });
     await bridge.clear();
     const index = (await bridge.requests()).length;
@@ -59,7 +54,7 @@ export default async function S5(context: CheckContext) {
       assert.match(invalid.error ?? "", /invalid selection twice/);
       await waitForState(page, "idle");
       const rejected = await untouched(root, evidence + "/invalid", 500);
-      return `offline ${offline}; restart ${recovered.observed} faded in ${recovered.elapsed.toFixed(1)} ms; invalid ${rejected}, ${invalid.piCalls} attempts, idle`;
+      return `offline ${offline}; restart ${recovered.ids.length} removed; invalid ${rejected}, ${invalid.piCalls} attempts, idle`;
     } finally {
       await bridge.stop();
     }

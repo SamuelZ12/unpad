@@ -2,12 +2,16 @@ import { collapse } from "../core/segment";
 import { MIN_ARTICLE_BLOCKS, MIN_BLOCK_WORDS } from "../shared/config";
 import type { Surface } from "../shared/types";
 
+export type ReadText = (node: Text) => string;
+
+export const projectionSelector = "[data-filler-cut-fragment], [data-filler-cut-marker]";
+
 interface SurfaceDoc {
   readonly root: Element;
   readonly surface: Surface;
   readonly title: string;
   readonly blocks: readonly Element[];
-  readonly textWalker?: (block: Element) => TreeWalker;
+  readonly generic?: boolean;
 }
 
 const nonProse = "nav, header, footer, aside, form, figure, figcaption, pre, table, h1, h2, h3, h4, h5, h6, [hidden], [aria-hidden=true]";
@@ -55,64 +59,66 @@ function blog(document: Document, path: string): SurfaceDoc[] {
   return [{ root: body, title, blocks, surface: "blog" }];
 }
 
-function genericTextWalker(root: Element) {
+export function textWalker(root: Element, generic: boolean) {
   return root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, (node) => {
-    if (!(node instanceof Element) || node.localName === "br") return NodeFilter.FILTER_ACCEPT;
-    return node.matches(privateText) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
+    if (node instanceof Text) return NodeFilter.FILTER_ACCEPT;
+    if (!(node instanceof Element)) return NodeFilter.FILTER_SKIP;
+    if (node.matches(projectionSelector) || (generic && node.matches(privateText))) return NodeFilter.FILTER_REJECT;
+    return generic && node.localName === "br" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
   });
 }
 
-function genericText(root: Element) {
-  const walker = genericTextWalker(root);
+function genericText(root: Element, read: ReadText) {
+  const walker = textWalker(root, true);
   let text = "";
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node instanceof Text ? node.data : "\n";
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node instanceof Text ? read(node) : "\n";
   return collapse(text);
 }
 
-function bareText(document: Document) {
+function bareText(document: Document, read: ReadText) {
   let best: Element | undefined;
   let most = 0;
   for (const element of document.querySelectorAll("body *")) {
-    if (element.closest(bareNonProse)) continue;
+    if (element.closest(`${bareNonProse}, ${projectionSelector}`)) continue;
     let length = 0;
-    for (const node of element.childNodes) if (node instanceof Text) length += collapse(node.data).length;
+    for (const node of element.childNodes) if (node instanceof Text) length += collapse(read(node)).length;
     if (length > most) [best, most] = [element, length];
   }
   return best;
 }
 
-function genericArticle(document: Document, checkArticle: boolean): SurfaceDoc[] {
+function genericArticle(document: Document, checkArticle: boolean, read: ReadText): SurfaceDoc[] {
   if (document.designMode === "on") return [];
   let root: Element | null = document.body;
   let longest = -1;
   for (const candidate of document.querySelectorAll("article, main, [role=main]")) {
     const length = [...candidate.querySelectorAll("p")].reduce((total, paragraph) =>
-      total + (paragraph.closest(genericNonProse) ? 0 : genericText(paragraph).length), 0);
+      total + (paragraph.closest(genericNonProse) ? 0 : genericText(paragraph, read).length), 0);
     if (length <= longest) continue;
     longest = length;
     root = candidate;
   }
   if (!root) return [];
   const heading = root === document.body ? undefined : root.querySelector("h1");
-  const title = heading && !heading.closest(privateText) ? genericText(heading) : collapse(document.title);
+  const title = heading && !heading.closest(privateText) ? genericText(heading, read) : collapse(document.title);
   const blocks = [...root.querySelectorAll(prose)].filter((block) =>
     !block.closest(genericNonProse) &&
     ![...block.querySelectorAll(prose)].some((child) => !child.closest(privateText)));
   if (!blocks.length) {
-    const block = bareText(document);
-    if (!block || (checkArticle && genericText(block).split(" ").length < MIN_ARTICLE_BLOCKS * MIN_BLOCK_WORDS)) return [];
-    return [{ root: block, title: collapse(document.title), blocks: [block], surface: "blog", textWalker: genericTextWalker }];
+    const block = bareText(document, read);
+    if (!block || (checkArticle && genericText(block, read).split(" ").length < MIN_ARTICLE_BLOCKS * MIN_BLOCK_WORDS)) return [];
+    return [{ root: block, title: collapse(document.title), blocks: [block], surface: "blog", generic: true }];
   }
   if (checkArticle && blocks.filter((block) =>
     !block.closest("ul, ol, li, dl, menu, [role=list], [role=listitem]") &&
-    genericText(block).split(" ").length >= MIN_BLOCK_WORDS).length < MIN_ARTICLE_BLOCKS) return [];
-  return [{ root, title, blocks, surface: "blog", textWalker: genericTextWalker }];
+    genericText(block, read).split(" ").length >= MIN_BLOCK_WORDS).length < MIN_ARTICLE_BLOCKS) return [];
+  return [{ root, title, blocks, surface: "blog", generic: true }];
 }
 
-export function surfaces(document: Document, url: URL, checkArticle: boolean): SurfaceDoc[] {
+export function surfaces(document: Document, url: URL, checkArticle: boolean, read: ReadText): SurfaceDoc[] {
   if (url.hostname === "x.com") return xStatus(document, url.pathname);
   if (url.hostname === "claude.com") return blog(document, url.pathname);
-  return genericArticle(document, checkArticle);
+  return genericArticle(document, checkArticle, read);
 }
 
 export function usesGenericSurface(url: URL) {

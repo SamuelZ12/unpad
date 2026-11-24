@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { state } from "./lib/browser";
 import { toggle, trace, waitForState, withBrowser } from "./lib/check";
-import { withBridge } from "./lib/fade";
+import { withBridge } from "./lib/cut";
 import { save, screenshot } from "./lib/pixels";
 
 export default async function S14(context: CheckContext) {

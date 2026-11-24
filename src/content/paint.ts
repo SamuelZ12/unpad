@@ -1,11 +1,5 @@
-import { fadedIds, markedIds, type PageState } from "../core/state";
-import type { AnchoredDoc } from "./anchor";
-
-const name = "filler-cut";
 const markName = "filler-cut-key";
-const alphaProperty = "--filler-cut-alpha";
 const markProperty = "--filler-cut-mark-opacity";
-const opacity = 0.4;
 const duration = 160;
 const rootSelectors = [
   "[data-article-body-html]",
@@ -14,10 +8,6 @@ const rootSelectors = [
   ".text-rich-text--article",
   "div[dir=auto][lang]",
 ];
-
-export function fadedRanges(docs: readonly AnchoredDoc[], state: PageState) {
-  return docs.flatMap(({ doc, ranges }) => fadedIds(state, doc.key).map((id) => ranges[id - 1]));
-}
 
 function originatingElements(ranges: readonly Range[]) {
   const elements = new Set<Element>();
@@ -35,7 +25,7 @@ function originatingElements(ranges: readonly Range[]) {
   return elements;
 }
 
-function highlightStyles(ranges: readonly Range[], marked: boolean) {
+function highlightStyles(ranges: readonly Range[]) {
   const selectors = new Map<Element, string>();
   function selector(element: Element): string {
     const known = selectors.get(element);
@@ -59,9 +49,6 @@ function highlightStyles(ranges: readonly Range[], marked: boolean) {
     byColor.set(color, paths);
   }
   return [...byColor].map(([color, paths]) => {
-    if (!marked) {
-      return `:is(${paths.join(",")})::highlight(${name}){color:color-mix(in srgb,${color} calc(var(${alphaProperty}) * 100%),transparent)}`;
-    }
     const rgb = color.startsWith("rgb") ? color.match(/[\d.]+/g)?.slice(0, 3).map(Number) : undefined;
     const dark = rgb ? rgb.reduce((sum, channel) => sum + channel, 0) > 384
       : matchMedia("(prefers-color-scheme: dark)").matches;
@@ -69,91 +56,53 @@ function highlightStyles(ranges: readonly Range[], marked: boolean) {
   }).join("\n");
 }
 
-export function createPainter() {
-  const animation = new CSSStyleSheet();
-  animation.replaceSync(`:root { ${alphaProperty}: 1; ${markProperty}: 0 }`);
-  const colors = new CSSStyleSheet();
-  document.adoptedStyleSheets = [...document.adoptedStyleSheets, animation, colors];
-  const rule = animation.cssRules[0] as CSSStyleRule;
-  const motion = matchMedia("(prefers-reduced-motion: reduce)");
-  // The highlight paints ranges in place and leaves the site's DOM and layout intact.
-  const fade = new Highlight();
+export function createMarkPainter() {
+  const sheet = new CSSStyleSheet();
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
   const mark = new Highlight();
-  CSS.highlights.set(name, fade);
   CSS.highlights.set(markName, mark);
-  let frame = 0;
-  let amount = 0;
-  let target = 0;
+  const motion = matchMedia("(prefers-reduced-motion: reduce)");
   let styles = "";
+  let opacity = 0;
+  let frame = 0;
 
   function updateStyles() {
-    const next = highlightStyles([...fade] as Range[], false) + "\n" + highlightStyles([...mark] as Range[], true);
+    const next = highlightStyles([...mark] as Range[]);
     if (styles === next) return;
     styles = next;
-    colors.replaceSync(styles);
+    sheet.replaceSync(`:root { ${markProperty}: ${opacity} }\n${styles}`);
   }
 
   function color(value: number) {
-    amount = value;
-    rule.style.setProperty(alphaProperty, String(1 - (1 - opacity) * amount));
-    rule.style.setProperty(markProperty, String(amount));
-  }
-
-  function finish() {
-    color(target);
-    if (target !== 0) return;
-    fade.clear();
-    mark.clear();
-    updateStyles();
+    opacity = value;
+    (sheet.cssRules[0] as CSSStyleRule | undefined)?.style.setProperty(markProperty, String(value));
   }
 
   motion.addEventListener("change", () => {
-    if (!motion.matches) return;
+    if (!motion.matches || !mark.size) return;
     cancelAnimationFrame(frame);
-    finish();
+    color(1);
   });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updateStyles);
 
-  function updateRanges(highlight: Highlight, ranges: readonly Range[]) {
-    const current = new Set<AbstractRange>(ranges);
-    for (const range of highlight) if (!current.has(range)) highlight.delete(range);
-    for (const range of current) if (!highlight.has(range)) highlight.add(range);
-  }
-
-  return function paint(docs: readonly AnchoredDoc[], state: PageState, animate = true) {
-    const fades = fadedRanges(docs, state);
-    const marks = docs.flatMap(({ doc, ranges }) => markedIds(state, doc.key).map((id) => ranges[id - 1]));
-    const next = fades.length || marks.length ? 1 : 0;
-    // A click only needs to remove its range. Leave the other ranges and styles in place.
-    if (!animate && next && fades.length + marks.length < fade.size + mark.size
-      && fades.every((range) => fade.has(range)) && marks.every((range) => mark.has(range))) {
-      updateRanges(fade, fades);
-      updateRanges(mark, marks);
-      return;
-    }
-    if (next) {
-      updateRanges(fade, fades);
-      updateRanges(mark, marks);
-      updateStyles();
-    }
-
-    if (!animate || motion.matches) {
+  return (ranges: readonly Range[]) => {
+    const wasMarked = !!mark.size;
+    mark.clear();
+    for (const range of ranges) mark.add(range);
+    updateStyles();
+    if (!ranges.length) {
       cancelAnimationFrame(frame);
-      target = next;
-      finish();
-      return;
+      color(0);
+    } else if (!wasMarked) {
+      if (motion.matches) color(1);
+      else {
+        const start = performance.now();
+        function animate(now: number) {
+          color(Math.max(0, Math.min(1, (now - start) / duration)));
+          if (opacity < 1) frame = requestAnimationFrame(animate);
+        }
+        frame = requestAnimationFrame(animate);
+      }
     }
-    if (target === next) return;
-    cancelAnimationFrame(frame);
-    target = next;
-    const from = amount;
-    const start = performance.now();
-    function tick(now: number) {
-      const progress = Math.min(1, (now - start) / duration);
-      if (progress === 1) return finish();
-      color(from + (target - from) * progress);
-      frame = requestAnimationFrame(tick);
-    }
-    frame = requestAnimationFrame(tick);
   };
 }

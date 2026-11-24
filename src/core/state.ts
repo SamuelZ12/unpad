@@ -25,7 +25,8 @@ export type PageEvent =
   | { readonly type: "picks-failed"; readonly docKey: DocKey; readonly reason: string }
   | { readonly type: "hold-start" }
   | { readonly type: "hold-end" }
-  | { readonly type: "restore" | "unmark"; readonly docKey: DocKey; readonly id: SentenceId }
+  | { readonly type: "restore"; readonly docKey: DocKey; readonly ids: readonly SentenceId[] }
+  | { readonly type: "unmark"; readonly docKey: DocKey; readonly id: SentenceId }
   | { readonly type: "navigated" };
 
 export type View = "idle" | "waiting" | "picks-ready" | "faded" | "revealed";
@@ -102,10 +103,13 @@ export function reduce(state: PageState, event: PageEvent): PageState {
       if (entry.picks.kind !== "waiting") return state;
       next = { ...entry, picks: { kind: "failed", reason: event.reason } };
       break;
-    case "restore":
-      if (!fadedIds(state, event.docKey).includes(event.id)) return state;
-      next = { ...entry, restored: new Set(entry.restored).add(event.id) };
+    case "restore": {
+      const run = removedRuns(state, event.docKey).find((ids) =>
+        ids.length === event.ids.length && ids.every((id, i) => id === event.ids[i]));
+      if (!run) return state;
+      next = { ...entry, restored: new Set([...entry.restored, ...run]) };
       break;
+    }
     case "unmark":
       if (!markedIds(state, event.docKey).includes(event.id)) return state;
       next = { ...entry, unmarked: new Set(entry.unmarked).add(event.id) };

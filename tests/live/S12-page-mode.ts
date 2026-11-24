@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { extensionWorker, withActionBrowser } from "./lib/action";
 import { waitForState } from "./lib/check";
-import { cacheEntry, pickedFades, withBridge } from "./lib/fade";
-import { changedSentences, geometry, installGeometry, regionsChanged, wholeProsePixels } from "./lib/geometry";
-import { painted as paintState } from "./lib/marks";
+import { assertCuts, cacheEntry, pickedCuts, proseHtml, withBridge } from "./lib/cut";
+import { marked } from "./lib/marks";
 import { poll, save, screenshot } from "./lib/pixels";
 import { activeBadge, articleUrl, assertUninjected, grants, openSite, registrations } from "./lib/sites";
 
@@ -12,7 +11,6 @@ export default async function S12PageMode(context: CheckContext) {
   return withBridge(context, () => withActionBrowser(async (tabs, action) => {
     const page = tabs.pages()[0];
     const worker = await extensionWorker(tabs);
-    await installGeometry(tabs);
     const storage = { lensOn: false };
     await worker.evaluate(async (storage) => {
       await chrome.storage.local.set(storage);
@@ -42,7 +40,8 @@ export default async function S12PageMode(context: CheckContext) {
     assert.equal((await context.bridge.requests()).length, cursor);
     await editor.evaluate((input) => input.remove());
     await page.evaluate(() => document.fonts.ready);
-    const layout = wholeProsePixels(await geometry(page));
+    const root = page.locator("main article, main").last();
+    const originalDoc = await proseHtml(root);
     const original = (await screenshot(page)).png;
     await save(context.evidence + "/page-mode-original", original);
 
@@ -51,22 +50,19 @@ export default async function S12PageMode(context: CheckContext) {
     const response = await context.bridge.waitForRequest(cursor);
     const entry = await cacheEntry(context, response.cacheKey);
     assert.equal(entry.check, undefined);
-    const selected = pickedFades(entry);
-    const paintIds = [...selected, ...entry.key ?? []];
+    const selected = pickedCuts(entry);
+    await assertCuts(root, entry);
     assert.equal(faded.faded, selected.length);
     const painted = (await screenshot(page)).png;
-    const visible = changedSentences(original, painted, layout);
-    assert.ok(visible.some((id) => selected.includes(id)), "No fade is visible");
-    assert.deepEqual(visible.filter((id) => !paintIds.includes(id)), [], "Prose outside the picks changed");
     await save(context.evidence + "/page-mode-faded", painted);
     await action.trigger(page);
     assert.equal((await waitForState(page, "picks-ready")).faded, 0);
     await poll(() => activeBadge(worker), (badge) => badge === "", 3000);
-    assert.deepEqual(await paintState(page), { marked: 0, faded: 0, marks: [], fades: [] });
+    assert.deepEqual(await marked(page), []);
+    await assertCuts(root, entry, []);
     const off = (await screenshot(page)).png;
     await save(context.evidence + "/page-mode-off", off);
-    const offPixels = regionsChanged(original, off, layout.sentences.flat());
-    assert.equal(offPixels, 0, "Prose pixels changed with the lens off");
+    assert.deepEqual(await proseHtml(root), originalDoc);
 
     await action.trigger(page);
     assert.deepEqual(await waitForState(page, "faded"), faded);
@@ -78,14 +74,12 @@ export default async function S12PageMode(context: CheckContext) {
     await poll(() => page.evaluate(() => document.documentElement.dataset.fillerCutFaded), (count) => count === "0", 2000);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.evaluate(() => document.fonts.ready);
-    const reloadLayout = wholeProsePixels(await geometry(page));
-    const reload = (await screenshot(page)).png;
+    const reload = await proseHtml(root);
     await Bun.sleep(500);
     const reloadAfter = (await screenshot(page)).png;
     await save(context.evidence + "/page-mode-reloaded", reloadAfter);
     await assertUninjected(page);
-    const reloadPixels = regionsChanged(reload, reloadAfter, reloadLayout.sentences.flat());
-    assert.equal(reloadPixels, 0, "Prose pixels changed after reload");
+    assert.deepEqual(await proseHtml(root), reload);
     assert.deepEqual(await grants(worker), before);
     assert.deepEqual(await registrations(worker), scripts);
     // The page's events are queued and sent like any other. Nothing else is stored.
@@ -98,6 +92,6 @@ export default async function S12PageMode(context: CheckContext) {
     assert.equal(await worker.evaluate(() =>
       (globalThis as unknown as { permissionRequests: number }).permissionRequests), 0);
     assert.equal((await context.bridge.requests()).slice(cursor).filter(({ path }) => path === "/select").length, 1);
-    return `${faded.faded}/${entry.sentences.length} faded (${visible.length} in screenshot), same after a fragment change; editor, off, and reload 0 fades; off and reload 0 changed prose pixels; 1 select, 1 shown event, 0 permission requests, grants, registrations, or storage changes`;
+    return `${faded.faded}/${entry.sentences.length} removed, same after a fragment change; editor, off, and reload 0 cuts; original HTML restored off; 1 select, 1 shown event, 0 permission requests, grants, registrations, or storage changes`;
   }));
 }

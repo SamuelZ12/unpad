@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { toggle, waitForState, withBrowser } from "./lib/check";
+import { assertCuts, cacheEntry, expandRun, pickedCuts } from "./lib/cut";
 import { poll } from "./lib/pixels";
 
 export default async function S13(context: CheckContext) {
@@ -42,15 +43,22 @@ export default async function S13(context: CheckContext) {
 
     await bridge.warmCache();
     await bridge.start();
-    await browser.open(page, "wang");
+    const index = (await bridge.requests()).length;
+    const root = await browser.open(page, "wang");
     const faded = await waitForState(page, "faded");
     await expectBadge(String(faded.faded));
+    const row = await bridge.waitForRequest(index);
+    const entry = await cacheEntry(context, row.cacheKey);
+    const { remaining } = await expandRun(root, entry, pickedCuts(entry));
+    const reduced = remaining.length ? String(remaining.length) : "";
+    await expectBadge(reduced);
     await toggle(page);
     assert.equal((await waitForState(page, "picks-ready")).faded, 0);
-    await expectBadge(String(faded.faded));
+    await assertCuts(root, entry, []);
+    await expectBadge(reduced);
     assert.equal(await badge(blankId), "");
     await page.goto("about:blank#after-wang");
     await expectBadge("");
-    return `waiting "…", failed "!", faded and picks-ready "${faded.faded}", untouched "" in both tabs`;
+    return `waiting "…", failed "!", cut "${faded.faded}", after expansion and lens off "${reduced}", untouched "" in both tabs`;
   }).finally(() => bridge.stop());
 }

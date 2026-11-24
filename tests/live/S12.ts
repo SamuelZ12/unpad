@@ -7,7 +7,7 @@ import { segment } from "../../src/core/segment";
 import type { CheckContext } from "./run";
 import { roots, state } from "./lib/browser";
 import { trace, waitForState, withBrowser } from "./lib/check";
-import { withBridge } from "./lib/fade";
+import { withBridge } from "./lib/cut";
 import { crop, difference, docBox, save, screenshot } from "./lib/pixels";
 
 const shortStatus = "https://x.com/xavier_clegg/status/2124646690384986459";

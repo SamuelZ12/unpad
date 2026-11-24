@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { extensionWorker, setAlwaysRun, withActionBrowser } from "./lib/action";
 import { waitForState } from "./lib/check";
-import { cacheEntry, withBridge } from "./lib/fade";
+import { cacheEntry, withBridge } from "./lib/cut";
 import { geometry, installGeometry, regionsChanged } from "./lib/geometry";
 import { difference, docCrop, poll, save, screenshot } from "./lib/pixels";
 import { activeBadge, articleUrl, openSite } from "./lib/sites";
