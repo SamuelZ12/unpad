@@ -48,12 +48,13 @@ export async function startBridge(config: BridgeConfig, spawn?: PiSpawn) {
         log.piCalls++;
         return runPi(prompt, config.dataDir, spawn);
       }
-      const { raw, ...result } = doc.key
+      const { raw, keyFailed, ...result } = doc.key
         ? await selectWithKey(doc, config.prompt, config.keyPrompt, config.rules, ask)
-        : await select(doc, config.prompt, config.rules, ask);
+        : { ...await select(doc, config.prompt, config.rules, ask), keyFailed: false };
       const picks = { cacheKey, ...result };
       const { title, sentences, check } = doc;
-      await writeCache(config.dataDir, {
+      // A timed-out key call must not become "no marks" for good. The next visit asks again.
+      if (!keyFailed) await writeCache(config.dataDir, {
         title, sentences, check, ...versions, ...picks, raw, ms: performance.now() - start,
       });
       return picks;

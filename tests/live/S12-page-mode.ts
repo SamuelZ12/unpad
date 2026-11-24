@@ -56,7 +56,7 @@ export default async function S12PageMode(context: CheckContext) {
     assert.equal(faded.faded, selected.length);
     const painted = (await screenshot(page)).png;
     const visible = changedSentences(original, painted, layout);
-    assert.ok(visible.length > 0);
+    assert.ok(visible.some((id) => selected.includes(id)), "No fade is visible");
     assert.deepEqual(visible.filter((id) => !paintIds.includes(id)), [], "Prose outside the picks changed");
     await save(context.evidence + "/page-mode-faded", painted);
     await action.trigger(page);

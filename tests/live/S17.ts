@@ -4,7 +4,7 @@ import { state } from "./lib/browser";
 import { toggle, waitForState, withBrowser } from "./lib/check";
 import { cacheEntry, withBridge } from "./lib/fade";
 import { geometry, installGeometry, regionsChanged, visible } from "./lib/geometry";
-import { assertMarkedSelection, painted, tintedPixels } from "./lib/marks";
+import { assertMarkedSelection, painted, settled, tintedPixels } from "./lib/marks";
 import { difference, docCrop, poll, save, screenshot } from "./lib/pixels";
 import { findClick } from "./lib/restore";
 
@@ -16,8 +16,8 @@ export default async function S17(context: CheckContext) {
     await browser.open(page, "wang");
     await waitForState(page, "faded");
     await page.evaluate(() => document.fonts.ready);
-    const settled = async () => {
-      await Bun.sleep(190);
+    const shot = async (on: boolean) => {
+      await settled(page, on);
       return (await screenshot(page)).png;
     };
     const response = await context.bridge.waitForRequest(index);
@@ -25,7 +25,7 @@ export default async function S17(context: CheckContext) {
     const paint = await painted(page);
     const marks = assertMarkedSelection(entry, paint);
     assert.ok(marks.length <= 3 && paint.faded >= 3);
-    const initial = await settled();
+    const initial = await shot(true);
     await save(context.evidence + "/wang-fades-and-marks", initial);
     const layout = await geometry(page);
     assert.ok(layout.protectedText.some((box) => visible(initial, box)), "Wang title region was not found");
@@ -33,7 +33,7 @@ export default async function S17(context: CheckContext) {
     const untouched = { marked: 0, faded: 0, marks: [], fades: [] };
     await page.keyboard.down("Shift");
     await waitForState(page, "revealed");
-    const original = await settled();
+    const original = await shot(false);
     assert.deepEqual(await painted(page), untouched);
     const background = marks.map((id) => tintedPixels(original, initial, layout.sentences[id - 1]));
     assert.ok(background.every((pixels) => pixels > 100), `Marked background pixels per sentence: ${background}`);
@@ -41,18 +41,18 @@ export default async function S17(context: CheckContext) {
     assert.equal(titlePixels, 0);
     await page.keyboard.up("Shift");
     await waitForState(page, "faded");
-    const refaded = await settled();
+    const refaded = await shot(true);
     assert.deepEqual(await painted(page), paint);
     assert.equal(regionsChanged(initial, refaded, layout.sentences.flat()), 0);
 
     await toggle(page);
     await waitForState(page, "picks-ready");
-    const off = await settled();
+    const off = await shot(false);
     assert.deepEqual(await painted(page), untouched);
     assert.equal(regionsChanged(original, off, layout.sentences.flat()), 0);
     await toggle(page);
     await waitForState(page, "faded");
-    await Bun.sleep(190);
+    await settled(page, true);
 
     const point = await findClick(page, [...marks]);
     await page.mouse.click(point.x, point.y);
@@ -79,7 +79,7 @@ export default async function S17(context: CheckContext) {
     const shortResponse = await context.bridge.waitForRequest(index);
     const short = await cacheEntry(context, shortResponse.cacheKey);
     assert.equal(short.sentences.length, 10);
-    assert.deepEqual(short.key, []);
+    assert.equal(short.key, undefined, "A short page asked for marks");
     await waitForState(page, "idle");
     assert.deepEqual(await painted(page), untouched);
     assert.equal(difference(before, await docCrop(perfloop)), 0);

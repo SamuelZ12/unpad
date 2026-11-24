@@ -112,9 +112,10 @@ test("a marked selection has its own version and never reuses a legacy cache ent
   const legacyKey = await cacheKeyFor(longDoc, versions);
   const markedKey = await cacheKeyFor(longDoc, keyVersions);
   let spawns = 0;
+  let keyAnswer = "[1,2,3]";
   const spawn: PiSpawn = (command) => {
     spawns++;
-    const answer = command.at(-1)?.startsWith(keyPrompt) ? "[1,2,3]" : "ALL";
+    const answer = command.at(-1)?.startsWith(keyPrompt) ? keyAnswer : "ALL";
     return { stdout: new Blob([answer]).stream(), exited: Promise.resolve(0), kill: () => {} };
   };
   const server = await startBridge({ port: 0, dataDir, versions, keyVersions, prompt, keyPrompt, rules: "Rules" }, spawn);
@@ -133,6 +134,15 @@ test("a marked selection has its own version and never reuses a legacy cache ent
     expect(await post({ ...longDoc, key: true })).toEqual(marked);
     expect(await post(longDoc)).toEqual(legacy);
     expect(spawns).toBe(3);
+    // A failed key answer returns the fade without marks and is asked again on the next visit.
+    const other = { ...longDoc, title: "Other" };
+    const otherKey = await cacheKeyFor(other, keyVersions);
+    keyAnswer = "no array";
+    expect(await post({ ...other, key: true })).toEqual({ ...legacy, cacheKey: otherKey, key: [] });
+    keyAnswer = "[2]";
+    expect(await post({ ...other, key: true })).toEqual({ ...legacy, cacheKey: otherKey, key: [2] });
+    expect(await post({ ...other, key: true })).toEqual({ ...legacy, cacheKey: otherKey, key: [2] });
+    expect(spawns).toBe(7);
   } finally {
     await server.stop(true);
     await rm(dataDir, { recursive: true, force: true });

@@ -54,7 +54,7 @@ export default async function S12AddedSite(context: CheckContext) {
     const visible = changedSentences(original, painted, layout);
     const unexpected = visible.filter((id) => !paintIds.includes(id));
     assert.deepEqual(unexpected, [], "Prose outside the picks changed");
-    assert.ok(visible.length > 0);
+    assert.ok(visible.some((id) => selected.includes(id)), "No fade is visible");
     await action.trigger(page);
     assert.deepEqual(await waitForState(page, "faded"), faded);
 

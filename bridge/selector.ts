@@ -96,7 +96,7 @@ function sourceFor(doc: SelectRequest) {
 }
 
 export function keyPromptFor(doc: SelectRequest, prompt: string, rules: string) {
-  return `${prompt.trimEnd()}${rules}${sourceFor(doc)}`;
+  return `${prompt}${rules}${sourceFor(doc)}`;
 }
 
 export function parseKey(raw: string, count: number): SentenceId[] | undefined {
@@ -127,10 +127,11 @@ export async function selectWithKey(
     ? ask(keyPromptFor(doc, keyPrompt, rules)).then((raw) => parseKey(raw, count), () => undefined)
     : undefined;
   const result = await keep;
-  if (result.selection.kind === "skip") return { ...result, key: [] };
+  if (result.selection.kind === "skip" || !key) return { ...result, key: [], keyFailed: false };
   const kept = result.selection.kind === "keep" ? new Set(result.selection.keep) : undefined;
-  const ids = (await key ?? []).filter((id) => !kept || kept.has(id));
-  return { ...result, key: ids.slice(0, Math.ceil(count / SENTENCES_PER_MARK)) };
+  const answer = await key;
+  const ids = (answer ?? []).filter((id) => !kept || kept.has(id));
+  return { ...result, key: ids.slice(0, Math.ceil(count / SENTENCES_PER_MARK)), keyFailed: !answer };
 }
 
 export async function select(

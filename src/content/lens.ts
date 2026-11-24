@@ -1,6 +1,7 @@
 import { candidates, fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
 import type { Doc } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
+import { MIN_MARK_SENTENCES } from "../shared/config";
 import { extract, type AnchoredDoc } from "./anchor";
 import { paintedAtPoint, listenForPaintClick } from "./click";
 import { createLog } from "./log";
@@ -78,7 +79,11 @@ function start() {
   async function requestPicks(doc: Doc, check: SelectRequest["check"], requestedOn: number) {
     const isCurrent = () => requestedOn === pageView && href === location.href;
     try {
-      const answer: unknown = await chrome.runtime.sendMessage({ type: "select", doc: { ...doc, check, key: true } });
+      // A short page gets no marks, so it keeps the fade-only cache entry.
+      const { title, sentences } = doc;
+      const request: SelectRequest = sentences.length >= MIN_MARK_SENTENCES
+        ? { title, sentences, check, key: true } : { title, sentences, check };
+      const answer: unknown = await chrome.runtime.sendMessage({ type: "select", doc: request });
       const picks = parseSelectResponse(answer);
       if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
       if (isCurrent()) dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });

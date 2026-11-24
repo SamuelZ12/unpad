@@ -120,8 +120,8 @@ test("failed and malformed key answers leave keep-all intact and SKIP drops keys
   for (const keyAnswer of [() => { throw new Error("Pi timed out"); }, () => "Here: [1]"]) {
     const result = await selectWithKey(doc, "Keep", "Key", "", async (prompt) =>
       prompt.startsWith("Key") ? keyAnswer() : "ALL");
-    expect(result).toEqual({ raw: "ALL", selection: { kind: "keep-all" }, key: [] });
+    expect(result).toEqual({ raw: "ALL", selection: { kind: "keep-all" }, key: [], keyFailed: true });
   }
   expect(await selectWithKey(doc, "Keep", "Key", "", async (prompt) => prompt.startsWith("Key") ? "[1]" : "SKIP"))
-    .toEqual({ raw: "SKIP", selection: { kind: "skip" }, key: [] });
+    .toEqual({ raw: "SKIP", selection: { kind: "skip" }, key: [], keyFailed: false });
 });

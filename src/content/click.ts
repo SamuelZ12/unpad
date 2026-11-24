@@ -29,7 +29,8 @@ export function listenForPaintClick(click: (x: number, y: number) => void) {
   window.addEventListener("click", (event) => {
     const endingSelection = wasSelected || selected();
     wasSelected = false;
-    if (event.button !== 0 || endingSelection || isEditing(event) || event.composedPath().some((target) =>
+    // A key press on a button is a click at 0,0. Only a real pointer click counts.
+    if (!event.isTrusted || event.detail === 0 || event.button !== 0 || endingSelection || isEditing(event) || event.composedPath().some((target) =>
       target instanceof Element && target.matches("a, [role=link]"))) return;
     click(event.clientX, event.clientY);
   }, true);
