@@ -7,7 +7,7 @@ export const PI_COMMAND = [
   "--model", "anthropic/claude-opus-5-5", "--thinking", "off", "--",
 ] as const;
 
-export const PARSER_VERSION = 2;
+export const PARSER_VERSION = 3;
 export const CHECK_PROMPT = "First decide whether this page should be cut at all. Answer READ if the main content is an article, essay, blog post, news story, long social post or paper: continuous prose by an author, meant to be read from start to finish. Answer SKIP for anything else: a README or project page, API or reference documentation, an issue or comment thread, a question-and-answer page, a feed, index or list of posts, search results, a profile, a product or pricing page, an app screen. If the answer is SKIP, output the single word SKIP and nothing else. Otherwise: ";
 
 const SCRUBBED_ENV = [
@@ -123,15 +123,22 @@ export async function selectWithKey(
   const keep = select(doc, base, rules, ask);
   const count = doc.sentences.length;
   const cap = maxMarks(count);
-  const key = cap > 0
+  const keyAnswer = cap > 0
     ? ask(keyPromptFor(doc, keyPrompt, rules)).then((raw) => parseKey(raw, count), () => undefined)
     : undefined;
   const result = await keep;
-  if (result.selection.kind === "skip" || !key) return { ...result, key: [], keyFailed: false };
-  const kept = result.selection.kind === "keep" ? new Set(result.selection.keep) : undefined;
-  const answer = await key;
-  const ids = (answer ?? []).filter((id) => !kept || kept.has(id));
-  return { ...result, key: ids.slice(0, cap), keyFailed: !answer };
+  if (result.selection.kind === "skip" || !keyAnswer) return { ...result, key: [], keyFailed: false };
+
+  const answer = await keyAnswer;
+  if (!answer) return { ...result, key: [], keyFailed: true };
+  const key = answer.slice(0, cap);
+  if (result.selection.kind === "keep-all") return { ...result, key, keyFailed: false };
+
+  const kept = new Set([...result.selection.keep, ...key]);
+  const selection: Selection = kept.size === count
+    ? { kind: "keep-all" }
+    : { kind: "keep", keep: [...kept].sort((a, b) => a - b) };
+  return { ...result, selection, key, keyFailed: false };
 }
 
 export async function select(

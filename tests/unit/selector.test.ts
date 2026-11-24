@@ -126,6 +126,33 @@ test("short documents use one call, and keep-all can carry keys from 20 sentence
   expect<unknown>(await pick(20)).toEqual({ key: [3, 2, 1], calls: 2 });
 });
 
+test("only the capped marks join the keep selection, in source order", async () => {
+  const doc = { title: "", sentences: Array(20).fill("Sentence.") };
+  const kept = Array.from({ length: 17 }, (_, index) => 17 - index);
+  const raw = JSON.stringify(kept);
+  const result = await selectWithKey(doc, "Keep", "Key", "", async (prompt) =>
+    prompt.startsWith("Key") ? "[19,18,3,19,1,2,4,5,6,7,20]" : raw);
+  expect<unknown>(result).toEqual({
+    raw,
+    selection: { kind: "keep", keep: Array.from({ length: 19 }, (_, index) => index + 1) },
+    key: [19, 18, 3, 1, 2, 4, 5, 6, 7],
+    keyFailed: false,
+  });
+});
+
+test("marks that fill the keep selection switch it to keep-all", async () => {
+  const doc = { title: "", sentences: Array(20).fill("Sentence.") };
+  const raw = JSON.stringify(Array.from({ length: 17 }, (_, index) => index + 1));
+  const result = await selectWithKey(doc, "Keep", "Key", "", async (prompt) =>
+    prompt.startsWith("Key") ? "[20,18,19]" : raw);
+  expect<unknown>(result).toEqual({
+    raw,
+    selection: { kind: "keep-all" },
+    key: [20, 18, 19],
+    keyFailed: false,
+  });
+});
+
 test("failed and malformed key answers leave keep-all intact and SKIP drops keys", async () => {
   const doc = { title: "", sentences: Array(20).fill("Sentence."), check: { url: "https://example.com/" } };
   for (const keyAnswer of [() => { throw new Error("Pi timed out"); }, () => "Here: [1]"]) {
