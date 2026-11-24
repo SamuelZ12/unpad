@@ -15,7 +15,8 @@ const otherSite = "https://www.anthropic.com/engineering/building-effective-agen
 
 async function observeUntouched(root: Locator, evidence: string) {
   await root.waitFor({ state: "visible" });
-  await root.page().waitForLoadState("load", { timeout: 10_000 });
+  // A slow third-party script can hold the load event past 10 s. The crops below still fail if the page is moving.
+  await root.page().waitForLoadState("load", { timeout: 10_000 }).catch(() => undefined);
   await root.scrollIntoViewIfNeeded();
   await root.page().evaluate(() => document.fonts.ready);
   const original = await docCrop(root);
