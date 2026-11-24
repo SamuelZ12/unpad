@@ -23,6 +23,7 @@ export function createCut(expand: Expand) {
       all: unset;
       display: inline;
       cursor: pointer;
+      user-select: none;
       font: inherit;
       font-size: .85em;
       line-height: 1;
@@ -41,7 +42,7 @@ export function createCut(expand: Expand) {
 
   const projected = new Map<Text, ProjectedText>();
   const collapsed = new Set<Element>();
-  const markers = new Set<HTMLElement>();
+  const markers = new Map<HTMLElement, () => void>();
   const blocks = new Set<Element>();
   let dirty = false;
 
@@ -51,7 +52,7 @@ export function createCut(expand: Expand) {
   }
 
   function clear() {
-    for (const marker of markers) marker.remove();
+    for (const marker of markers.keys()) marker.remove();
     for (const [node, { original, fragments, edited }] of projected) {
       for (const { element } of fragments) element.remove();
       if (!edited && node.data === "") node.data = original;
@@ -91,6 +92,32 @@ export function createCut(expand: Expand) {
     if (!anyContent && !block.matches("body, td, th")) collapse(block);
   }
 
+  function markerAction(event: Event) {
+    return event.target instanceof HTMLElement ? markers.get(event.target) : undefined;
+  }
+
+  let wasSelected = false;
+  window.addEventListener("pointerdown", () => {
+    wasSelected = document.getSelection()?.isCollapsed === false;
+  }, true);
+  window.addEventListener("click", (event) => {
+    const selecting = wasSelected || document.getSelection()?.isCollapsed === false;
+    wasSelected = false;
+    const action = markerAction(event);
+    if (!action || !event.isTrusted || event.button !== 0) return;
+    // Markers within inline links must handle the click before the site can follow it.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!selecting) action();
+  }, true);
+  window.addEventListener("keydown", (event) => {
+    const action = markerAction(event);
+    if (!action || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!event.repeat) action();
+  }, true);
+
   function makeMarker(docKey: DocKey, ids: readonly SentenceId[], sentence: SentenceAnchor) {
     const marker = document.createElement("span");
     marker.dataset.fillerCutMarker = "";
@@ -99,24 +126,7 @@ export function createCut(expand: Expand) {
     marker.setAttribute("role", "button");
     marker.title = `Show ${ids.length} removed ${ids.length === 1 ? "sentence" : "sentences"}`;
     marker.setAttribute("aria-label", marker.title);
-    let wasSelected = false;
-    marker.addEventListener("pointerdown", () => { wasSelected = document.getSelection()?.isCollapsed === false; });
-    marker.addEventListener("click", (event) => {
-      const selecting = wasSelected || document.getSelection()?.isCollapsed === false;
-      wasSelected = false;
-      if (!event.isTrusted || event.button !== 0) return;
-      // A marker can sit within a link's text. Only its own click is handled here.
-      event.preventDefault();
-      event.stopPropagation();
-      if (!selecting) expand(docKey, ids, sentence, marker);
-    });
-    marker.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (!event.repeat) expand(docKey, ids, sentence, marker);
-    });
-    markers.add(marker);
+    markers.set(marker, () => expand(docKey, ids, sentence, marker));
     return marker;
   }
 
