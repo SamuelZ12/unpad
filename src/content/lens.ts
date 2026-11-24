@@ -132,8 +132,11 @@ function start() {
   function navigate() {
     if (href === location.href) return;
     if (mode === "page") {
-      // A section link stays in this page. A new route needs its own action.
-      if (href.split("#", 1)[0] === location.href.split("#", 1)[0]) href = location.href;
+      // A section link stays in this page. A new route, hash routes included, needs its own action.
+      const anchor = location.hash.slice(1);
+      const sameDocument = href.split("#", 1)[0] === location.href.split("#", 1)[0] &&
+        (!anchor || !!document.getElementById(anchor) || document.getElementsByName(anchor).length > 0);
+      if (sameDocument) href = location.href;
       else stop();
     } else if (mode === "site") reset();
     void scan();
@@ -210,7 +213,8 @@ function start() {
     if (next === "page") {
       if (mode === "site") return;
       mode = "page";
-      href = location.href;
+      // Events from this press belong to the route it was pressed on.
+      if (href !== location.href) reset();
       togglePage();
     } else if (mode !== "site") {
       mode = "site";

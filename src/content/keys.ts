@@ -21,7 +21,7 @@ export function isToggle(event: KeyboardEvent) {
 
 export function listenForToggle(toggle: () => false | void) {
   window.addEventListener("keydown", (event) => {
-    if (!isToggle(event) || toggle() === false) return;
+    if (!event.isTrusted || !isToggle(event) || toggle() === false) return;
     event.preventDefault();
   }, true);
 }

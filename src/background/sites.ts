@@ -64,7 +64,9 @@ async function inspectDocument(tabId: number) {
 async function injectDocument(tabId: number, url: string, file: string) {
   // Bind injection to the document inspected by the action, even if the tab navigates.
   const document = await inspectDocument(tabId);
-  if (document?.documentId && document.result === url) {
+  // Chrome keeps a #:~:text= directive in the tab URL and hides it from the page.
+  const route = (href: string) => href.split("#", 1)[0];
+  if (document?.documentId && document.result !== undefined && route(document.result) === route(url)) {
     await chrome.scripting.executeScript({ target: { tabId, documentIds: [document.documentId] }, files: [file] });
   }
 }

@@ -1,4 +1,5 @@
 import { collapse } from "../core/segment";
+import { MIN_ARTICLE_BLOCKS, MIN_BLOCK_WORDS } from "../shared/config";
 import type { Surface } from "../shared/types";
 
 interface SurfaceDoc {
@@ -85,7 +86,7 @@ function genericArticle(document: Document, checkArticle: boolean): SurfaceDoc[]
     ![...block.querySelectorAll(prose)].some((child) => !child.closest(privateText)));
   if (checkArticle && blocks.filter((block) =>
     !block.closest("ul, ol, li, dl, menu, [role=list], [role=listitem]") &&
-    genericText(block).split(" ").length >= 40).length < 5) return [];
+    genericText(block).split(" ").length >= MIN_BLOCK_WORDS).length < MIN_ARTICLE_BLOCKS) return [];
   return [{ root, title, blocks, surface: "blog", textWalker: genericTextWalker }];
 }
 

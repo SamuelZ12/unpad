@@ -24,6 +24,8 @@ test("accepts a standalone SKIP only for checked pages", async () => {
   expect(parseSelection("SKIP", 6)).toBeUndefined();
   expect(parseSelection('"SKIP"', 6, true)).toBeUndefined();
   expect(parseSelection("SKIP: project page", 6, true)).toBeUndefined();
+  expect<unknown>(parseSelection("READ\n[1,2,3]", 6, true)).toEqual({ kind: "keep", keep: [1, 2, 3] });
+  expect(parseSelection("READ\n[1,2,3]", 6)).toBeUndefined();
   const doc = { title: "Project", sentences: ["One."], check: { url: "https://example.com/repo" } };
   const prompts: string[] = [];
   const result = await select(doc, "Base\n", "Rules\n", async (prompt) => {

@@ -65,7 +65,7 @@ if (typeof chrome !== "undefined") {
   });
   if (process.env.FILLER_CUT_DEV === "1") Object.assign(globalThis, { testSiteMenu });
   chrome.tabs.onActivated.addListener(refreshMenu);
-  chrome.tabs.onUpdated.addListener((_id, _change, tab) => { if (tab.active) refreshMenu(); });
+  chrome.tabs.onUpdated.addListener((_id, change, tab) => { if (tab.active && (change.url || change.status)) refreshMenu(); });
   chrome.windows.onFocusChanged.addListener(refreshMenu);
   chrome.permissions.onAdded.addListener(refreshMenu);
   chrome.permissions.onRemoved.addListener(refreshMenu);

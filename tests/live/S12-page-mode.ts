@@ -25,6 +25,7 @@ export default async function S12PageMode(context: CheckContext) {
     const before = await grants(worker);
     const scripts = await registrations(worker);
     const cursor = (await context.bridge.requests()).length;
+    const logged = (await context.bridge.events()).length;
     await openSite(page, articleUrl);
     await assertUninjected(page);
     const editor = await page.evaluateHandle(() => {
@@ -64,9 +65,12 @@ export default async function S12PageMode(context: CheckContext) {
 
     await action.trigger(page);
     assert.deepEqual(await waitForState(page, "faded"), faded);
-    await page.evaluate(() => history.replaceState(history.state, "", "#filler-cut-test"));
+    await page.evaluate(() => history.replaceState(history.state, "", "#" + document.querySelector("[id]:not([id*='%'])")!.id));
     await Bun.sleep(150);
     assert.deepEqual(await waitForState(page, "faded", 1000), faded);
+    // A hash route is a new page. It needs its own key press.
+    await page.evaluate(() => history.replaceState(history.state, "", "#/filler-cut/other-route"));
+    await poll(() => page.evaluate(() => document.documentElement.dataset.fillerCutFaded), (count) => count === "0", 2000);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.evaluate(() => document.fonts.ready);
     const reloadLayout = await geometry(page);
@@ -80,7 +84,7 @@ export default async function S12PageMode(context: CheckContext) {
     assert.deepEqual(await grants(worker), before);
     assert.deepEqual(await registrations(worker), scripts);
     // The page's events are queued and sent like any other. Nothing else is stored.
-    const shown = await poll(() => context.bridge.events(), (events) =>
+    const shown = await poll(async () => (await context.bridge.events()).slice(logged), (events) =>
       events.some((event) => event.type === "shown" && event.url.includes("building-effective-agents")), 5000);
     assert.equal(shown.filter((event) => event.type === "shown" && event.url.includes("building-effective-agents")).length, 1);
     const { pendingEvents = [], ...stored } = await worker.evaluate(() => chrome.storage.local.get(null));
