@@ -5,6 +5,7 @@ import { launch, type Mode } from "./lib/browser";
 import { bridgeUrl, testBridge } from "./lib/bridge";
 import load from "./load";
 import extract from "./extract";
+import demo from "./demo";
 
 import S1 from "./S1";
 import S2 from "./S2";
@@ -32,9 +33,10 @@ const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
 const ids = args.filter((arg) => arg !== modeFlag);
+const recording = ids.length === 1 && ids[0] === "demo";
 if (!ids.length || !["logged-out", "replay", "logged-in"].includes(mode) ||
-  ids.some((id) => id !== "all" && !Object.hasOwn(checks, id))) {
-  throw new Error("Usage: bun run verify [--mode=logged-out|replay|logged-in] <check ...|all>");
+  (!recording && ids.some((id) => id !== "all" && !Object.hasOwn(checks, id)))) {
+  throw new Error("Usage: bun run verify [--mode=logged-out|replay|logged-in] <check ...|all|demo>");
 }
 
 const evidence = join(homedir(), ".pi/agent/filler-cut/evidence", new Date().toISOString().replaceAll(":", "-"));
@@ -47,8 +49,8 @@ const build = Bun.spawn([process.execPath, "run", "build"], {
 if (await build.exited !== 0) throw new Error("Extension build failed");
 
 const bridge = await testBridge();
-const reports: string[] = [];
-try {
+async function runChecks() {
+  const reports: string[] = [];
   let accountError: unknown;
   if (mode === "logged-in") {
     try {
@@ -86,6 +88,11 @@ try {
     console.log(message);
     await Bun.write(join(evidence, "results.log"), reports.join("\n") + "\n");
   }
+}
+
+try {
+  if (recording) await demo({ evidence, mode, bridge });
+  else await runChecks();
 } finally {
   await bridge.close(evidence);
 }

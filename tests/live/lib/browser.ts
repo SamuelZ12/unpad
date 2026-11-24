@@ -31,7 +31,7 @@ export async function fixture(name: Exclude<Reference, "warp">) {
   </style><main><div data-testid=cellInnerDiv>${article}</div></main>`;
 }
 
-export async function launch(mode: Mode, headless = true) {
+export async function launch(mode: Mode, headless = true, videoDir?: string) {
   const temporary = mode !== "logged-in";
   const profile = temporary
     ? await mkdtemp("/tmp/filler-chrome-")
@@ -41,8 +41,10 @@ export async function launch(mode: Mode, headless = true) {
     if (temporary) await rm(profile, { recursive: true, force: true });
   };
   try {
+    const viewport = { width: 1280, height: 900 };
     const context = await chromium.launchPersistentContext(profile, {
-      channel: "chromium", headless, viewport: { width: 1280, height: 900 },
+      channel: "chromium", headless, viewport,
+      recordVideo: videoDir ? { dir: videoDir, size: viewport } : undefined,
       userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/159.0.0.0 Safari/537.36",
       args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     });

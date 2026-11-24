@@ -10,7 +10,7 @@ import { crop, difference, poll, save, screenshot, type Box } from "./pixels";
 
 type Browser = Parameters<Parameters<typeof withBrowser>[1]>[0];
 
-export async function findClick(page: Page, ids: number[]) {
+export async function findClick(page: Page, ids: number[], visibleFades = 1) {
   const height = page.viewportSize()?.height ?? 900;
   const bottom = height - 80;
   const target = Math.min(360, height * 0.45);
@@ -18,7 +18,10 @@ export async function findClick(page: Page, ids: number[]) {
     const rects = (await geometry(page)).sentences[id - 1];
     if (!rects.length) continue;
     await page.evaluate((delta) => window.scrollBy(0, delta), rects[0].y - target);
-    const current = (await geometry(page)).sentences[id - 1]
+    const { sentences } = await geometry(page);
+    if (visibleFades > 1 && ids.filter((id) => sentences[id - 1].some((rect) =>
+      rect.width > 16 && rect.y > 60 && rect.y + rect.height < bottom)).length < visibleFades) continue;
+    const current = sentences[id - 1]
       .filter((rect) => rect.width > 16 && rect.y > 60 && rect.y < bottom)
       .sort((a, b) => b.width - a.width);
     for (const rect of current) {
@@ -31,7 +34,7 @@ export async function findClick(page: Page, ids: number[]) {
       }, { x, y })) return { id, rect, x, y };
     }
   }
-  throw new Error(`No unobstructed sentence click point for ${ids.join(",")}`);
+  throw new Error(`No unobstructed sentence click point with ${visibleFades} fades in view for ${ids.join(",")}`);
 }
 
 export async function captureClip(page: Page, session: CDPSession, rect: Box, beyond = true) {
