@@ -79,10 +79,16 @@ export default async function S12PageMode(context: CheckContext) {
     assert.equal(reloadPixels, 0);
     assert.deepEqual(await grants(worker), before);
     assert.deepEqual(await registrations(worker), scripts);
-    assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get(null)), storage);
+    // The page's events are queued and sent like any other. Nothing else is stored.
+    const shown = await poll(() => context.bridge.events(), (events) =>
+      events.some((event) => event.type === "shown" && event.url.includes("building-effective-agents")), 5000);
+    assert.equal(shown.filter((event) => event.type === "shown" && event.url.includes("building-effective-agents")).length, 1);
+    const { pendingEvents = [], ...stored } = await worker.evaluate(() => chrome.storage.local.get(null));
+    assert.deepEqual(stored, storage);
+    assert.deepEqual(pendingEvents, []);
     assert.equal(await worker.evaluate(() =>
       (globalThis as unknown as { permissionRequests: number }).permissionRequests), 0);
-    assert.equal((await context.bridge.requests()).length - cursor, 1);
-    return `${faded.faded}/${entry.sentences.length} faded (${visible.length} in screenshot), same after a fragment change; editor, off, and reload 0 fades; off and reload 0 changed prose pixels; 1 select, 0 permission requests, grants, registrations, or storage changes`;
+    assert.equal((await context.bridge.requests()).slice(cursor).filter(({ path }) => path === "/select").length, 1);
+    return `${faded.faded}/${entry.sentences.length} faded (${visible.length} in screenshot), same after a fragment change; editor, off, and reload 0 fades; off and reload 0 changed prose pixels; 1 select, 1 shown event, 0 permission requests, grants, registrations, or storage changes`;
   }));
 }

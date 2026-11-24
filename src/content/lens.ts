@@ -46,7 +46,7 @@ function start() {
       const picks = entry?.picks;
       if (entry && current === "picks-ready") readyTotal += candidates(entry).length;
       failed ||= picks?.kind === "failed";
-      if (mode !== "site" || !faded || picks?.kind !== "ready" || shown.has(doc.key)) continue;
+      if (!faded || picks?.kind !== "ready" || shown.has(doc.key)) continue;
       shown.add(doc.key);
       void log({
         type: "shown", cacheKey: picks.cacheKey,
@@ -171,7 +171,7 @@ function start() {
     (heldMs) => {
       const revealed = currentView() === "revealed";
       dispatch({ type: "hold-end" });
-      if (revealed && mode === "site") void log({ type: "reveal", heldMs }).catch(console.warn);
+      if (revealed) void log({ type: "reveal", heldMs }).catch(console.warn);
     },
   );
 
@@ -181,7 +181,6 @@ function start() {
     const entry = state.docs.get(target.docKey);
     if (entry?.picks.kind !== "ready") return;
     dispatch({ type: "restore", ...target });
-    if (mode !== "site") return;
     void log({
       type: "restore", cacheKey: entry.picks.cacheKey, sentenceId: target.id,
       text: entry.doc.sentences[target.id - 1],
