@@ -115,19 +115,23 @@ export async function withBridge<T>(context: CheckContext, run: () => Promise<T>
 export function sentenceTop(root: Locator, sentence: string) {
   return root.evaluate((element, sentence) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    const initial = sentence.slice(0, 12);
+    const nodes: { node: Text; offset: number }[] = [];
+    let text = "";
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (!(node instanceof Text)) continue;
-      const match = [...node.data.matchAll(/[\s\S]/gu)].find(({ index }) =>
-        node.data.slice(index).replace(/\s+/gu, " ").startsWith(initial));
-      if (!match) continue;
-      const range = document.createRange();
-      range.setStart(node, match.index);
-      range.setEnd(node, match.index + match[0].length);
-      const rect = range.getClientRects()[0];
-      if (rect?.width) return rect.top;
+      if (!(node instanceof Text) || !node.length || node.parentElement?.closest("[data-filler-cut-marker]")) continue;
+      nodes.push({ node, offset: text.length });
+      text += node.data;
     }
-    throw new Error("Cannot locate start of " + sentence);
+    const escaped = sentence.split(" ").map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const match = new RegExp(escaped.join("\\s+"), "u").exec(text);
+    const start = match && nodes.findLast(({ offset }) => offset <= match.index);
+    if (!match || !start) throw new Error("Cannot locate start of " + sentence);
+
+    const range = document.createRange();
+    const offset = match.index - start.offset;
+    range.setStart(start.node, offset);
+    range.setEnd(start.node, offset + 1);
+    return range.getClientRects()[0].top;
   }, sentence);
 }
 
