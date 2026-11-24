@@ -17,12 +17,22 @@ async function registerSite(match: string) {
   }
 }
 
-export async function restoreSites() {
+async function grantedSites() {
   const { origins = [] } = await new Promise<chrome.permissions.Permissions>((resolve) => chrome.permissions.getAll(resolve));
-  // Rebuild the scripts after an extension reload or update. Only the exact
-  // scheme, host, and port grants from the action enable generic extraction.
-  const sites = origins.filter((origin) => /^https?:\/\/(?:\[[^\]]+\]|[^*:]+):\d+\/\*$/.test(origin));
-  await Promise.all(sites.map(registerSite));
+  // Only the exact scheme, host, and port grants from the action enable generic extraction.
+  return origins.filter((origin) => /^https?:\/\/(?:\[[^\]]+\]|[^*:]+):\d+\/\*$/.test(origin));
+}
+
+export async function restoreSites() {
+  // Rebuild the scripts after an extension reload or update.
+  await Promise.all((await grantedSites()).map(registerSite));
+}
+
+export async function forgetSites() {
+  const sites = await grantedSites();
+  if (!sites.length) return;
+  await chrome.scripting.unregisterContentScripts({ ids: sites }).catch(() => undefined);
+  await chrome.permissions.remove({ origins: sites });
 }
 
 export function siteMatch({ protocol, hostname, port }: URL) {

@@ -3,7 +3,7 @@ import { sha256 } from "../shared/keys";
 import { parseErrorResponse, parseEventsRequest, parseSelectRequest, parseSelectResponse } from "../shared/wire";
 
 import { chromeEventQueue } from "./events";
-import { activateSite, ownsShortcut, restoreSites } from "./sites";
+import { activateSite, forgetSites, ownsShortcut, restoreSites } from "./sites";
 
 export async function selectDoc(body: unknown, fetcher: (input: URL, init: RequestInit) => Promise<Response> = fetch) {
   const request = parseSelectRequest(body);
@@ -40,9 +40,12 @@ if (typeof chrome !== "undefined") {
   chrome.action.onClicked.addListener((tab) => {
     void activateSite(tab, setLens).catch(console.warn);
   });
-  const restore = () => { void restoreSites().catch(console.warn); };
-  chrome.runtime.onInstalled.addListener(restore);
-  chrome.runtime.onStartup.addListener(restore);
+  chrome.runtime.onInstalled.addListener(({ reason, previousVersion }) => {
+    // 0.0.2 turned a whole site on from one key press. Forget those sites once.
+    const sites = reason === "update" && previousVersion === "0.0.2" ? forgetSites() : restoreSites();
+    void sites.catch(console.warn);
+  });
+  chrome.runtime.onStartup.addListener(() => { void restoreSites().catch(console.warn); });
   const queueEvents = chromeEventQueue();
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message?.type === "hash" && typeof message.data === "string") {
