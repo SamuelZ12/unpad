@@ -31,14 +31,15 @@ export async function fixture(name: Exclude<Reference, "warp">) {
   </style><main><div data-testid=cellInnerDiv>${article}</div></main>`;
 }
 
-export async function launch(mode: Mode, headless = true, videoDir?: string) {
+export async function launch(mode: Mode, headless = true, videoDir?: string, actionProfile?: string) {
   const temporary = mode !== "logged-in";
-  const profile = temporary
+  if (actionProfile && !temporary) throw new Error("Browser action checks require an isolated profile");
+  const profile = actionProfile ?? (temporary
     ? await mkdtemp("/tmp/filler-chrome-")
-    : resolve(homedir(), ".pi/agent/filler-cut/x-test-profile");
+    : resolve(homedir(), ".pi/agent/filler-cut/x-test-profile"));
   const extension = resolve("dist/extension");
   const cleanup = async () => {
-    if (temporary) await rm(profile, { recursive: true, force: true });
+    if (temporary && !actionProfile) await rm(profile, { recursive: true, force: true });
   };
   try {
     const viewport = { width: 1280, height: 900 };
@@ -46,7 +47,10 @@ export async function launch(mode: Mode, headless = true, videoDir?: string) {
       channel: "chromium", headless, viewport,
       recordVideo: videoDir ? { dir: videoDir, size: viewport } : undefined,
       userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/159.0.0.0 Safari/537.36",
-      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+      args: [
+        `--disable-extensions-except=${extension}`, `--load-extension=${extension}`,
+        ...actionProfile ? ["--remote-debugging-port=0", "--enable-unsafe-extension-debugging"] : [],
+      ],
     });
     if (mode === "replay") {
       await context.route("https://x.com/**", async (route) => {

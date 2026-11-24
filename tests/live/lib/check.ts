@@ -4,6 +4,7 @@ import type { CheckContext } from "../run";
 import type { View } from "../../../src/core/state";
 import { launch, state } from "./browser";
 import { poll } from "./pixels";
+import { clearActionShortcut } from "./action";
 
 export async function withBrowser<T>(context: CheckContext, work: (
   browser: Awaited<ReturnType<typeof launch>>, page: Page,
@@ -11,6 +12,7 @@ export async function withBrowser<T>(context: CheckContext, work: (
   const browser = await launch(context.mode, headless);
   try {
     const page = browser.context.pages()[0];
+    if (context.mode !== "logged-in") await clearActionShortcut(browser.context);
     await browser.context.addInitScript(() => {
       const trace: { view: string; at: number }[] = [];
       Object.defineProperty(window, "fillerCutTrace", { value: trace });

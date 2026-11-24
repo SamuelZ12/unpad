@@ -28,7 +28,7 @@ import S16 from "./S16";
 import picks from "./picks";
 import dark from "./dark";
 
-const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark, S7, S14, S8, S9, S15, S10, S11, S12, S13, "S12-enable-site": S12EnableSite };
+const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, dark, S7, S14, S8, S9, S15, S10, S11, S12, "S12-enable-site": S12EnableSite, S13 };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
@@ -62,24 +62,18 @@ async function runChecks() {
     }
   }
   const all = ids.includes("all");
-  const requested = all ? [...Object.keys(checks).filter((id) => /^S\d+$/.test(id)), "S12-enable-site"] : ids;
+  const requested = all ? Object.keys(checks).filter((id) => /^S\d/.test(id)) : ids;
   for (const id of requested) {
     const directory = join(evidence, id);
     await mkdir(directory);
     const check = checks[id as keyof typeof checks];
-    const actualMode = id === "S12" ? "logged-out" : id === "S10" && mode === "logged-out" ? "replay" : mode;
-    const notBuilt = id === "S12-enable-site";
-    if (notBuilt) {
-      const heading = "\nNot built";
-      reports.push(heading);
-      console.log(heading);
-    }
+    const actualMode = id.startsWith("S12") ? "logged-out" : id === "S10" && mode === "logged-out" ? "replay" : mode;
     let message: string;
     try {
-      if (accountError && id !== "S12" && !notBuilt) throw accountError;
+      if (accountError && actualMode === "logged-in") throw accountError;
       message = `PASS ${id} [${actualMode}] ${await check({ evidence: directory, mode: actualMode, bridge } as CheckContext)}`;
     } catch (error) {
-      if (!all || !notBuilt || ids.includes(id)) process.exitCode = 1;
+      process.exitCode = 1;
       message = `FAIL ${id} [${actualMode}] ${error}`;
     }
     await bridge.archive();

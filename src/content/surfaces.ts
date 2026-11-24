@@ -48,8 +48,26 @@ function blog(document: Document, path: string): SurfaceDoc[] {
   return [{ root: body, title, blocks, surface: "blog" }];
 }
 
+function genericArticle(document: Document): SurfaceDoc[] {
+  let root: Element | null = document.body;
+  let longest = -1;
+  for (const candidate of document.querySelectorAll("article, main, [role=main]")) {
+    const length = [...candidate.querySelectorAll("p")].reduce((total, paragraph) =>
+      total + (paragraph.closest(nonProse) ? 0 : collapse(paragraph.textContent).length), 0);
+    if (length <= longest) continue;
+    longest = length;
+    root = candidate;
+  }
+  if (!root) return [];
+  const heading = root === document.body ? undefined : root.querySelector("h1");
+  const title = collapse(heading?.textContent ?? document.title);
+  const blocks = [...root.querySelectorAll(prose)].filter((block) =>
+    !block.closest(nonProse) && !block.querySelector(prose));
+  return [{ root, title, blocks, surface: "blog" }];
+}
+
 export function surfaces(document: Document, url: URL): SurfaceDoc[] {
   if (url.hostname === "x.com") return xStatus(document, url.pathname);
   if (url.hostname === "claude.com") return blog(document, url.pathname);
-  return [];
+  return genericArticle(document);
 }

@@ -1,7 +1,17 @@
+function isEditor(target: EventTarget | null) {
+  return target instanceof HTMLElement &&
+    (target.isContentEditable || target.matches("input, textarea, select"));
+}
+
 export function isEditing(event: KeyboardEvent) {
-  return event.composedPath().some((target) =>
-    target instanceof HTMLElement &&
-    (target.isContentEditable || target.matches("input, textarea, select")));
+  return event.composedPath().some(isEditor);
+}
+
+export function hasFocusedEditor() {
+  let target = document.activeElement;
+  while (target?.shadowRoot?.activeElement) target = target.shadowRoot.activeElement;
+  // The top-frame listener could not receive keys from an embedded document.
+  return isEditor(target) || target?.matches("iframe, frame") === true;
 }
 
 export function isToggle(event: KeyboardEvent) {

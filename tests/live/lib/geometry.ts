@@ -16,8 +16,8 @@ export async function installGeometry(context: BrowserContext) {
   await context.addInitScript({ content: await setup });
 }
 
-export async function geometry(page: Page): Promise<Geometry> {
-  const result = await page.evaluate(() => window.fillerCutGeometry());
+export async function geometry(page: Page, excluded?: string): Promise<Geometry> {
+  const result = await page.evaluate((selector) => window.fillerCutGeometry(selector), excluded);
   assert.ok(result, "No sentence geometry on page");
   return result;
 }

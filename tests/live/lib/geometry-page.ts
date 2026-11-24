@@ -4,6 +4,7 @@ import type { Box } from "./pixels";
 
 export interface Geometry {
   doc: Doc;
+  rootTag: string;
   sentences: Box[][];
   protectedText: Box[];
   excludedHits: number;
@@ -19,11 +20,11 @@ function box({ x, y, width, height }: DOMRect): Box {
 
 declare global {
   interface Window {
-    fillerCutGeometry: () => Promise<Geometry | undefined>;
+    fillerCutGeometry: (excludedSelector?: string) => Promise<Geometry | undefined>;
   }
 }
 
-window.fillerCutGeometry = async () => {
+window.fillerCutGeometry = async (excludedSelector = excluded) => {
   const [anchored] = await extract(document, new URL(location.href));
   if (!anchored) return;
   const { doc, root, ranges } = anchored;
@@ -31,13 +32,14 @@ window.fillerCutGeometry = async () => {
   const protectedText = [...closestArticle.querySelectorAll(headers)].map((element) => box(element.getBoundingClientRect()));
   let excludedHits = 0;
   if (doc.surface === "blog") {
-    const elements = root.querySelectorAll(excluded);
+    const elements = root.querySelectorAll(excludedSelector);
     for (const range of ranges) for (const element of elements) {
       if (range.intersectsNode(element)) excludedHits++;
     }
   }
   return {
     doc,
+    rootTag: root.tagName,
     protectedText,
     excludedHits,
     colors: ranges.map((range) => getComputedStyle(range.startContainer.parentElement ?? root).color),
