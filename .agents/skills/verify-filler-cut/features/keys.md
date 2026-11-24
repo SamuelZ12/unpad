@@ -7,10 +7,11 @@ The toggle changes the lens in every tab. A Shift hold reveals the current page 
 - S6 toggles Wang and Warp together.
 - S7 checks a Shift hold, release, and short press.
 - S14 checks both shortcuts while typing.
+- S12-enable-site counts lens changes from the browser action and the fallback page key.
 
 ## How to get to it (user POV)
 
-On a faded page, press Option+Shift+F on macOS or Alt+Shift+F elsewhere. Hold Shift alone to reveal the original.
+On a faded page, click the toolbar icon or press Option+Shift+F on macOS or Alt+Shift+F elsewhere. Hold Shift alone to reveal the original.
 
 ## Driving it with Playwright
 
@@ -18,4 +19,4 @@ Use a fresh test profile and let the first fade finish. Run `bun run verify S6 S
 
 ## Gotchas
 
-Synthetic keys reach the page listeners. They cannot trigger Chrome's extension shortcuts.
+Synthetic keys reach the page listeners. Chrome's assigned action shortcut takes precedence over the fallback page key, so isolated tests clear the assignment before testing page keys.

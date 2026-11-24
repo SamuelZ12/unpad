@@ -1,6 +1,6 @@
 # Filler Cut live specification
 
-Filler Cut is a Chrome extension for X status pages and Claude blog articles. When picks arrive, the lens fades filler and leaves key sentences at full strength. All text stays in the author's words and in its original place. Option+Shift+F on macOS or Alt+Shift+F elsewhere toggles the lens across tabs. Hold Shift alone for 200 ms to see the original until release, or click a faded sentence to bring that sentence back. The bridge records restores, and the toolbar badge reports the page's state.
+Filler Cut fades filler in X status pages, Claude blog articles, and articles on sites you enable. Key sentences stay at full strength, in the author's words and in their original place. On a new site, press Option+Shift+F on macOS or Alt+Shift+F elsewhere, or click the toolbar icon. Allow access in Chrome's prompt to fade the current article and enable automatic fades on that origin. On an enabled site, the same actions toggle the lens across tabs. Hold Shift alone for 200 ms to see the original until release, or click a faded sentence to bring that sentence back. The bridge records restores, and the toolbar badge reports the page's state.
 
 ## Terms
 
@@ -13,7 +13,7 @@ Filler Cut is a Chrome extension for X status pages and Claude blog articles. Wh
 
 ## Checks
 
-Run `bun run verify all` for the numbered checks or pass individual IDs. The default `logged-out` mode uses public X. `replay` serves captured signed-in X markup at its original URL. `logged-in` uses the dedicated Playwright test profile. Warp and the Anthropic article use live pages. See the [verification skill](../../.agents/skills/verify-filler-cut/SKILL.md) for profile rules and evidence paths.
+Run `bun run verify all` for the numbered checks or pass individual IDs. The default `logged-out` mode uses public X. `replay` serves captured signed-in X markup at its original URL. `logged-in` uses the dedicated Playwright test profile. Warp and the articles on Anthropic and Simon Willison's blog use live pages. See the [verification skill](../../.agents/skills/verify-filler-cut/SKILL.md) for profile rules and evidence paths.
 
 | ID | Behaviour | Modes |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ Run `bun run verify all` for the numbered checks or pass individual IDs. The def
 | [S10](S10.ts) | Fades and restores survive X rebuilding an article. | Replay or logged-in. Logged-out requests use replay. |
 | [S11](S11.ts) | A second status gets no stale fades, and Back restores Wang's fades from the cache. | All |
 | [S12](S12.ts) | A short X post and an unenabled site stay untouched and send no requests. | Live logged-out pages in every suite |
-| [S12-enable-site](S12-enable-site.ts) | The toggle would enable a new site and persist through reload. | Fails when called directly. `all` reports it under **Not built**. |
+| [S12-enable-site](S12-enable-site.ts) | Chrome's action enables one origin on each of two live sites. The page sends one selection request and fades without a reload. Reload, a second article in another tab, and a browser restart fade on load. Dismissing the prompt leaves the page untouched and sends no requests. An action and an unassigned-shortcut fallback key each toggle once across tabs. | Live articles in a fresh profile in every suite |
 | [S13](S13.ts) | The toolbar badge reports pending picks, a fade count, an untouched page, or a bridge failure. | All |
 | [S14](S14.ts) | The lens and reveal keys leave typing alone. | All |
 | [S15](S15.ts) | Links in faded text still work and produce no restore. | All |
@@ -48,7 +48,9 @@ The reference pages are the [Wang X Article](https://x.com/alexandr_wang/status/
 - On Nov 23, 2026, public X used `[data-article-body-html]` with paragraphs for Articles and `div[dir=auto][lang]` for post text. Replies appeared in a plain list. The signed-in React app used `[data-testid=twitterArticleRichTextView] [data-block=true]` for Articles and `[data-testid=tweetText]` for posts. Its virtualized `[data-testid=cellInnerDiv]` cells move with `translateY`. S11 records whether public X opens a new document. Replay and the signed-in app must navigate within the same document.
 - Scrolling to 18,989 px in the signed-in Wang thread removed the Article. All 14 test ranges lost their anchors. Scrolling back produced new nodes with the same 28 sentences, and rebuilding 28 ranges took 0.3 ms. A `DocKey` hashes the title and the sentences so picks and restores survive replacement nodes within a page view.
 - Ranges and the CSS Custom Highlight API change paint without inserting elements into the page's DOM. In the prototype, the kept sentence stayed at 327 px before and after the fade. The highlight does not provide click targets, so the extension uses `document.caretPositionFromPoint` to find the text under the click.
-- Shift reveal needs key-up, which `chrome.commands` does not deliver. The content script handles both shortcuts. Chromium's synthetic key events reached the content script in the prototype and triggered `chrome.commands` zero times.
+- Chrome's `_execute_action` shortcut and the toolbar icon invoke the same action. The content script toggles from a page key only when the action has no assigned shortcut. Shift reveal still uses the page's key-down and key-up events. Chromium's synthetic Playwright keys reach the page and invoke the Chrome action zero times.
+- An OS-level Alt+Shift+F sent through X11 on Linux Chromium 156 invoked the action once. The page received the modifier events and zero `KeyF` events. macOS Chromium 159 reported an assigned Option+Shift+F shortcut. The macOS login window prevented the OS-level key probe from reaching Chromium.
+- S12-enable-site uses `Extensions.triggerAction` and Chrome's real optional permission API. It pre-approves each origin through Chrome's extension settings, then tests a separate pending request by closing its window. The automated check covers the grant and dismissal results. A physical shortcut and the prompt's **Allow** and **Deny** buttons require native browser input.
 - The bridge receives docs with 6 to 400 sentences. If picks would fade fewer than 3, it keeps everything so dense posts stay readable. In 5 prototype runs per page, Perfloop would have faded 0 to 1 of 10 sentences and Wang 4 to 7 of 29. The later Wang markup yielded 28 sentences.
 - The bridge cache is keyed by doc, selector version, and reader-rules version. The bridge owns those versions. Returning to a page can therefore reuse picks for the current rules with one bridge request.
 

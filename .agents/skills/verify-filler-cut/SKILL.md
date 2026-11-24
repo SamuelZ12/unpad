@@ -34,13 +34,14 @@ Replace `<ids>` with space-separated IDs such as `S1 S8`. To choose a mode for a
 - The logged-in test profile is `~/.pi/agent/filler-cut/x-test-profile` for the throwaway account `@fillercut_test`. Open it only through Playwright's `launchPersistentContext`, as in `tests/live/lib/browser.ts`. A raw Chrome binary stores cookies under a different keychain key. On Nov 23, 2026, this caused the next Playwright launch to drop the session without an error and the login was lost.
 - In the logged-in profile, only load pages, scroll, press keys, and click article text. Leave at least 3 s between page loads. S11 follows its status link within the article.
 - Real Pi calls use Samuel's Claude plan. Warm checks reuse the cache within a run. Set `FILLER_CUT_VERIFY_CACHE` to a previous run's `bridge/cache` directory to seed a new run. Cold checks clear the cache before measuring.
-- Playwright keys reach the content script. They never fire `chrome.commands`. S8 needs a visible window for accurate compositor timing on macOS. The harness opens one there.
+- Playwright keys reach the content script. They never fire Chrome's browser shortcut. The numbered checks that use page keys clear the action shortcut in their isolated profiles to exercise the fallback key. For a dedicated logged-in test profile, clear the shortcut in `chrome://extensions/shortcuts` before running checks that press the toggle key. S8 needs a visible window for accurate compositor timing on macOS. The harness opens one there.
+- Run `bun run verify S12-enable-site` to exercise per-origin access. The check sends Chrome's toolbar action through CDP and pre-approves each origin through Chrome's extension settings. Closing the window dismisses a separate live permission request. The check covers the grant and dismissal results, automatic fades, and the toggle count. Testing a physical shortcut or either button in the permission dialog requires native browser input.
 
 ## Evidence
 
 Each run writes to `~/.pi/agent/filler-cut/evidence/<UTC timestamp>/`. Read `results.log` for the per-check outcome. Look in each check's directory for its screenshots and timing files, and in `bridge/` for request logs, event logs, and cache entries. The demo prints `demo.webm` and also `demo.mp4` when `ffmpeg` is on `PATH`.
 
-A PASS requires the selected check to drive the page through its normal reader action and meet every assertion in the requested mode. Cite the outcome, the measurements, and the evidence. Use screenshot comparisons for paint claims and verify bridge side effects from the logs. Replay substitutes the X document and its navigation or rebuild where the test says so. Report replay evidence as replay. If X opens a dialog, report the text and the failed check. `S12-enable-site` fails when requested directly. `all` prints that predicate under **Not built** and excludes it from the exit code.
+A PASS requires the selected check to meet every assertion in the requested mode. Cite the outcome, the measurements, and the evidence. Use screenshot comparisons for paint claims and verify bridge side effects from the logs. Replay substitutes the X document and its navigation or rebuild where the test says so. Report replay evidence as replay. If X opens a dialog, report the text and the failed check.
 
 ## Cleanup
 
