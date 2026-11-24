@@ -4,7 +4,7 @@ import { SENTENCES_PER_MARK } from "../../src/shared/config";
 import { toggle, waitForState, withBrowser } from "./lib/check";
 import { cacheEntry, pickedFades, withBridge } from "./lib/fade";
 import { changedSentences, geometry, installGeometry } from "./lib/geometry";
-import { assertMarkedSelection, painted, tintedPixels } from "./lib/marks";
+import { assertMarkedSelection, painted, settled, tintedPixels } from "./lib/marks";
 import { save, screenshot } from "./lib/pixels";
 
 export default async function S18(context: CheckContext) {
@@ -28,12 +28,12 @@ export default async function S18(context: CheckContext) {
     const marks = assertMarkedSelection(entry, paint);
     await toggle(page);
     await waitForState(page, "picks-ready");
-    await Bun.sleep(190);
+    await settled(page, false);
     const original = (await screenshot(page)).png;
     const layout = await geometry(page);
     await toggle(page);
     await waitForState(page, "faded");
-    await Bun.sleep(190);
+    await settled(page, true);
     const image = (await screenshot(page)).png;
     await save(context.evidence + "/warp-fades-and-marks", image);
     const tinted = marks.filter((id) => tintedPixels(original, image, layout.sentences[id - 1]) > 100);

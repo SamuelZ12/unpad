@@ -32,6 +32,13 @@ export function assertMarkedSelection(
   return marks;
 }
 
+// The paint animates over 160 ms, and a tall viewport draws slow frames.
+export async function settled(page: Page, on: boolean) {
+  await page.waitForFunction((target) =>
+    getComputedStyle(document.documentElement).getPropertyValue("--filler-cut-mark-opacity").trim() === target,
+  on ? "1" : "0", { timeout: 3000 });
+}
+
 export function tintedPixels(before: PNG, after: PNG, boxes: Box[]) {
   const tint = [255, 214, 10];
   let count = 0;

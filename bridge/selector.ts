@@ -100,9 +100,12 @@ export function keyPromptFor(doc: SelectRequest, prompt: string, rules: string) 
 }
 
 export function parseKey(raw: string, count: number): SentenceId[] | undefined {
+  // Pi wrote a note after the array in 2 of 3 runs on a 159-sentence page.
+  // The first array is the answer; a mark is a hint, so a retry is not worth a second call.
+  const first = raw.match(/^\s*\[[\d\s,]*\]/)?.[0];
   let values: unknown;
   try {
-    values = JSON.parse(raw);
+    values = JSON.parse(first ?? "");
   } catch {
     return undefined;
   }

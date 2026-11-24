@@ -85,7 +85,8 @@ test("uses the specified Pi command, scrubs the environment, and kills it on tim
 test("key answers are ordered arrays of unique in-range integers", () => {
   expect<unknown>(parseKey("[6,1,3]", 6)).toEqual([6, 1, 3]);
   expect(parseKey("[]", 6)).toEqual([]);
-  for (const raw of ["[0]", "[7]", "[1.5]", "[1,1]", '["3"]', "[1]\nDone", "ALL", "null"]) {
+  expect<unknown>(parseKey("[4,1]\n\nToo many? Fine.\n[4]\n", 6)).toEqual([4, 1]);
+  for (const raw of ["[0]", "[7]", "[1.5]", "[1,1]", '["3"]', "Here: [1]", "ALL", "null"]) {
     expect(parseKey(raw, 6)).toBeUndefined();
   }
 });
@@ -116,7 +117,7 @@ test("short documents use one call, and keep-all can carry keys from 20 sentence
 
 test("failed and malformed key answers leave keep-all intact and SKIP drops keys", async () => {
   const doc = { title: "", sentences: Array(20).fill("Sentence."), check: { url: "https://example.com/" } };
-  for (const keyAnswer of [() => { throw new Error("Pi timed out"); }, () => "[1] trailing text"]) {
+  for (const keyAnswer of [() => { throw new Error("Pi timed out"); }, () => "Here: [1]"]) {
     const result = await selectWithKey(doc, "Keep", "Key", "", async (prompt) =>
       prompt.startsWith("Key") ? keyAnswer() : "ALL");
     expect(result).toEqual({ raw: "ALL", selection: { kind: "keep-all" }, key: [] });
