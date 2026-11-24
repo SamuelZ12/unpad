@@ -1,6 +1,6 @@
 # Filler Cut live specification
 
-Filler Cut fades filler in X status pages, Claude blog articles, and articles on sites you enable. Key sentences stay at full strength, in the author's words and in their original place. On a new site, press Option+Shift+F on macOS or Alt+Shift+F elsewhere, or click the toolbar icon. Allow access in Chrome's prompt to fade the current article and enable automatic fades on that origin. On an enabled site, the same actions toggle the lens across tabs. Hold Shift alone for 200 ms to see the original until release, or click a faded sentence to bring that sentence back. The bridge records restores, and the toolbar badge reports the page's state.
+Filler Cut fades filler in X status pages, Claude blog articles, and articles on sites you enable. Key sentences stay at full strength, in the author's words and in their original place. On a new site, press Option+Shift+F on macOS or Alt+Shift+F elsewhere, or click the toolbar icon. Allow access in Chrome's prompt to fade the current article and enable automatic fades on that origin. Use the same actions to start Filler Cut in a tab that was already open when you enabled the site. Once Filler Cut runs in the tab, those actions toggle the lens across tabs. Hold Shift alone for 200 ms to see the original until release, or click a faded sentence to bring that sentence back. The bridge records restores, and the toolbar badge reports the page's state.
 
 ## Terms
 
@@ -29,7 +29,7 @@ Run `bun run verify all` for the numbered checks or pass individual IDs. The def
 | [S10](S10.ts) | Fades and restores survive X rebuilding an article. | Replay or logged-in. Logged-out requests use replay. |
 | [S11](S11.ts) | A second status gets no stale fades, and Back restores Wang's fades from the cache. | All |
 | [S12](S12.ts) | A short X post and an unenabled site stay untouched and send no requests. | Live logged-out pages in every suite |
-| [S12-enable-site](S12-enable-site.ts) | Chrome's action enables one origin on each of two live sites. The page sends one selection request and fades without a reload. Reload, a second article in another tab, and a browser restart fade on load. Dismissing the prompt leaves the page untouched and sends no requests. An action and an unassigned-shortcut fallback key each toggle once across tabs. | Live articles in a fresh profile in every suite |
+| [S12-enable-site](S12-enable-site.ts) | Chrome's action enables one origin on each of two live sites. It fades the current article and a second, already-open article with one selection request each and no reload. Starting Filler Cut in the second tab leaves the lens on and the first tab faded. Reload, a new tab, and a browser restart fade on load. Dismissing the prompt leaves the page untouched and sends no requests. In a running tab, the action and the fallback key each toggle once. | Live articles in a fresh profile in every suite |
 | [S13](S13.ts) | The toolbar badge reports pending picks, a fade count, an untouched page, or a bridge failure. | All |
 | [S14](S14.ts) | The lens and reveal keys leave typing alone. | All |
 | [S15](S15.ts) | Links in faded text still work and produce no restore. | All |

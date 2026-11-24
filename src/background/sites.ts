@@ -41,18 +41,21 @@ export async function activateSite(tab: chrome.tabs.Tab, setLens: (on?: boolean)
     // Make the request in the action's gesture, before awaiting any Chrome API.
     if (!await chrome.permissions.request(permission)) return;
     await registerSite(match);
-    if (await hadAccess) return toggleFromPage(tabId, setLens);
-    await setLens(true);
+    if (await hadAccess) {
+      const editing = await focusedEditor(tabId);
+      if (editing === true) return;
+      if (editing === false) return setLens();
+    }
     const current = await chrome.tabs.get(tabId).catch(() => undefined);
     if (current?.url && new URL(current.url).origin === origin) {
+      await setLens(true);
       await chrome.scripting.executeScript({ target: { tabId }, files: ["main.js"] });
     }
     return;
   }
-  await toggleFromPage(tabId, setLens);
+  if (await focusedEditor(tabId) !== true) await setLens();
 }
 
-async function toggleFromPage(tabId: number, setLens: () => Promise<void>) {
-  const editing = await chrome.tabs.sendMessage(tabId, { type: "focused-editor" }, { frameId: 0 }).catch(() => false);
-  if (editing !== true) await setLens();
+function focusedEditor(tabId: number): Promise<boolean | undefined> {
+  return chrome.tabs.sendMessage(tabId, { type: "focused-editor" }, { frameId: 0 }).catch(() => undefined);
 }

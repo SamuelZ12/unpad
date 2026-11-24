@@ -1,8 +1,9 @@
 // On two live sites, compare article pixels and bridge logs before and after
 // Chrome's toolbar action. Chrome gets one exact origin per request. The check
 // pre-approves each origin in the isolated profile, and separately dismisses a
-// pending prompt by closing its window. Verify immediate fades, reload, another
-// tab and article, restart, and one lens change per action or fallback key.
+// pending prompt by closing its window. Verify fades in both already-open
+// tabs, automatic fades on later loads, and one lens change per action or
+// fallback key in a tab where the extension is running.
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import type { Page, Worker } from "playwright";
@@ -118,7 +119,11 @@ export default async function S12EnableSite(context: CheckContext) {
 
           for (const { name, first, next } of sites) {
             await open(page, first);
+            const alreadyOpen = await tabs.newPage();
+            await open(alreadyOpen, next);
             const grant = grantFor(page.url());
+            assert.equal(grantFor(alreadyOpen.url()), grant);
+            await assertUntouched(alreadyOpen);
             const layout = await geometry(page, excluded);
             const before = (await screenshot(page)).png;
             const requestIndex = (await bridge.requests()).length;
@@ -154,18 +159,41 @@ export default async function S12EnableSite(context: CheckContext) {
             await save(evidence + "/" + name + "-enabled", settled);
             assert.equal((await bridge.requests()).length - requestIndex, 1, name);
 
+            await assertUntouched(alreadyOpen);
+            const otherLayout = await geometry(alreadyOpen, excluded);
+            const otherOriginal = (await screenshot(alreadyOpen)).png;
+            const otherDocument = await alreadyOpen.evaluate(() => performance.timeOrigin);
+            const changes = await events.changes();
+            await action.trigger(alreadyOpen);
+            const otherFades = await waitForState(alreadyOpen, "faded");
+            assert.equal(await alreadyOpen.evaluate(() => performance.timeOrigin), otherDocument, name);
+            assert.deepEqual(await state(page), faded);
+            assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get("lensOn")).lensOn), true);
+            assert.deepEqual(await events.changes(), changes);
+            const otherEntry = await cacheEntry(context, (await bridge.waitForRequest(requestIndex + 1)).cacheKey);
+            assert.notEqual(otherEntry.cacheKey, entry.cacheKey);
+            assert.equal(otherFades.faded, pickedFades(otherEntry).length);
+            assert.equal(await alreadyOpen.evaluate(() => CSS.highlights.get("filler-cut")?.size), otherFades.faded);
+            const otherSettled = (await screenshot(alreadyOpen)).png;
+            const otherVisible = changedSentences(otherOriginal, otherSettled, otherLayout);
+            assert.ok(otherVisible.length > 0, `${name}: no faded prose pixels in the already-open tab`);
+            assert.deepEqual(otherVisible.filter((id) => !pickedFades(otherEntry).includes(id)), [], name);
+            await save(evidence + "/" + name + "-already-open", otherSettled);
+            assert.equal((await bridge.requests()).length - requestIndex, 2, name);
+            results.push(`${name} already-open tab: ${otherFades.faded}/${otherEntry.sentences.length} faded (${otherVisible.length} in screenshot), 0 reloads, 0 lens changes, first tab still ${faded.faded} faded, 1 extra request`);
+            await alreadyOpen.close();
+
             await page.reload({ waitUntil: "load" });
             assert.deepEqual(await waitForState(page, "faded"), faded);
-            assert.equal((await bridge.waitForRequest(requestIndex + 1)).source, "cache");
+            assert.equal((await bridge.waitForRequest(requestIndex + 2)).source, "cache");
             const second = await tabs.newPage();
             await open(second, next);
             assert.equal(grantFor(second.url()), grant);
             const secondFades = await waitForState(second, "faded");
-            const otherEntry = await cacheEntry(context, (await bridge.waitForRequest(requestIndex + 2)).cacheKey);
-            assert.notEqual(otherEntry.cacheKey, entry.cacheKey);
+            assert.equal((await bridge.waitForRequest(requestIndex + 3)).cacheKey, otherEntry.cacheKey);
             assert.equal(secondFades.faded, pickedFades(otherEntry).length);
             assert.equal(await second.evaluate(() => CSS.highlights.get("filler-cut")?.size), secondFades.faded);
-            assert.equal((await bridge.requests()).length - requestIndex, 3, name);
+            assert.equal((await bridge.requests()).length - requestIndex, 4, name);
             await save(evidence + "/" + name + "-second", (await screenshot(second)).png);
             results.push(`${name} (${layout.rootTag}): 0 changed pixels and requests before action, ${faded.faded}/${entry.sentences.length} faded (${visible.length} in screenshot), 1 request, reload ${faded.faded} faded, second tab ${secondFades.faded}/${otherEntry.sentences.length} faded`);
             await second.close();
