@@ -5,7 +5,12 @@ export const MIN_SENTENCES = 6;
 export const MAX_SENTENCES = 1500;
 export const MIN_FADED = 3;
 export const MIN_MARK_SENTENCES = 20;
-export const SENTENCES_PER_MARK = 10;
+export const MARK_CAP_MULTIPLIER = 2;
+
+export function maxMarks(sentenceCount: number): number {
+  return sentenceCount < MIN_MARK_SENTENCES ? 0 : Math.ceil(MARK_CAP_MULTIPLIER * Math.sqrt(sentenceCount));
+}
+
 // An added site sends a page only when it has this many paragraphs of this many words.
 export const MIN_ARTICLE_BLOCKS = 5;
 export const MIN_BLOCK_WORDS = 40;

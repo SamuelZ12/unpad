@@ -126,7 +126,7 @@ test("a marked selection has its own version and never reuses a legacy cache ent
       return response.json();
     };
     const legacy = { cacheKey: legacyKey, selection: { kind: "keep-all" } };
-    const marked = { ...legacy, cacheKey: markedKey, key: [1, 2] };
+    const marked = { ...legacy, cacheKey: markedKey, key: [1, 2, 3] };
     expect(await post(longDoc)).toEqual(legacy);
     expect(spawns).toBe(1);
     await writeFile(cachePath(dataDir, markedKey), JSON.stringify({ ...legacy, cacheKey: markedKey }));

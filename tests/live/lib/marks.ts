@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import type { PNG } from "pngjs";
 import { collapse } from "../../../src/core/segment";
-import { SENTENCES_PER_MARK } from "../../../src/shared/config";
+import { maxMarks } from "../../../src/shared/config";
 import { cacheEntry, pickedFades } from "./fade";
 import { visible } from "./geometry";
 import { crop, type Box } from "./pixels";
@@ -22,7 +22,7 @@ export function assertMarkedSelection(
 ) {
   const fades = pickedFades(entry);
   const marks = entry.key;
-  assert.ok(marks && marks.length >= 1 && marks.length <= Math.ceil(entry.sentences.length / SENTENCES_PER_MARK));
+  assert.ok(marks && marks.length >= 1 && marks.length <= maxMarks(entry.sentences.length));
   assert.ok(marks.every((id) => !fades.includes(id)), "A key pick was also faded");
   assert.deepEqual(paint, {
     marked: marks.length, faded: fades.length,

@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { MIN_FADED, MIN_MARK_SENTENCES, SENTENCES_PER_MARK } from "../src/shared/config";
+import { MARK_CAP_MULTIPLIER, MIN_FADED, MIN_MARK_SENTENCES } from "../src/shared/config";
 import { sha256 } from "../src/shared/keys";
 import type { RulesVersion, SelectorVersion } from "../src/shared/types";
 import type { HealthResponse } from "../src/shared/wire";
@@ -13,7 +13,7 @@ export async function versionsFor(
   keyPrompt?: string,
 ): Promise<HealthResponse> {
   const selectorInputs: unknown[] = [prompt, CHECK_PROMPT, PI_COMMAND, minFaded, PARSER_VERSION];
-  if (keyPrompt !== undefined) selectorInputs.push(keyPrompt, MIN_MARK_SENTENCES, SENTENCES_PER_MARK);
+  if (keyPrompt !== undefined) selectorInputs.push(keyPrompt, MIN_MARK_SENTENCES, MARK_CAP_MULTIPLIER);
   const [selector, reader] = await Promise.all([
     sha256(JSON.stringify(selectorInputs)),
     sha256(rules),

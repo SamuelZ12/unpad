@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { PI_COMMAND, parseKey, parseSelection, runPi, select, selectWithKey } from "../../bridge/selector";
 import type { PiSpawn } from "../../bridge/selector";
+import { maxMarks } from "../../src/shared/config";
 
 test("accepts ALL with or without JSON quotes, integers, and digit strings", () => {
   expect<unknown>(parseSelection(' "ALL"\n', 6)).toEqual({ kind: "keep-all" });
@@ -96,17 +97,22 @@ test("key answers are ordered arrays of in-range integers", () => {
   }
 });
 
-test("key and keep calls overlap, then kept keys are capped in priority order", async () => {
-  const doc = { title: "", sentences: Array(21).fill("Sentence."), key: true } as const;
+test.each([[19, 0], [28, 11], [74, 18], [789, 57]])(
+  "caps marks at %i sentences",
+  (sentences, cap) => expect(maxMarks(sentences)).toBe(cap),
+);
+
+test("key and keep calls overlap, then marks are capped in priority order", async () => {
+  const doc = { title: "", sentences: Array(28).fill("Sentence."), key: true } as const;
   const keep = Promise.withResolvers<string>();
   const prompts: string[] = [];
   const pending = selectWithKey(doc, "Keep", "Key", "", (prompt) => {
     prompts.push(prompt);
-    return prompt.startsWith("Keep") ? keep.promise : Promise.resolve("[21,4,2,3,1]");
+    return prompt.startsWith("Keep") ? keep.promise : Promise.resolve("[12,4,2,3,1,6,7,8,9,10,11,5]");
   });
   expect(prompts).toHaveLength(2);
-  keep.resolve("[1,2,3,4]");
-  expect<unknown>((await pending).key).toEqual([4, 2, 3]);
+  keep.resolve("ALL");
+  expect<unknown>((await pending).key).toEqual([12, 4, 2, 3, 1, 6, 7, 8, 9, 10, 11]);
 });
 
 test("short documents use one call, and keep-all can carry keys from 20 sentences", async () => {
@@ -117,7 +123,7 @@ test("short documents use one call, and keep-all can carry keys from 20 sentence
       .then(({ key }) => ({ key, calls }));
   };
   expect(await pick(19)).toEqual({ key: [], calls: 1 });
-  expect<unknown>(await pick(20)).toEqual({ key: [3, 2], calls: 2 });
+  expect<unknown>(await pick(20)).toEqual({ key: [3, 2, 1], calls: 2 });
 });
 
 test("failed and malformed key answers leave keep-all intact and SKIP drops keys", async () => {

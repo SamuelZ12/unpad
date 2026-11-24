@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
-import { SENTENCES_PER_MARK } from "../../src/shared/config";
+import { maxMarks } from "../../src/shared/config";
 import { toggle, waitForState, withBrowser } from "./lib/check";
 import { cacheEntry, pickedFades, withBridge } from "./lib/fade";
 import { changedSentences, geometry, installGeometry } from "./lib/geometry";
@@ -41,6 +41,6 @@ export default async function S18(context: CheckContext) {
     const faded = pickedFades(entry);
     const visibleFades = changedSentences(original, image, layout).filter((id) => faded.includes(id)).length;
     assert.ok(visibleFades > 0, "Warp screenshot contains no visible fades");
-    return `Warp ${entry.sentences.length} sentences, ${marks.length}/${Math.ceil(entry.sentences.length / SENTENCES_PER_MARK)} marks and ${paint.faded} fades, 0 overlaps; screenshot shows ${tinted.length} marks and ${visibleFades} fades`;
+    return `Warp ${entry.sentences.length} sentences, ${marks.length}/${maxMarks(entry.sentences.length)} marks and ${paint.faded} fades, 0 overlaps; screenshot shows ${tinted.length} marks and ${visibleFades} fades`;
   }, true, { width: 1280, height: 4900 }));
 }

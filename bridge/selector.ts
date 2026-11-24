@@ -1,4 +1,4 @@
-import { MIN_FADED, MIN_MARK_SENTENCES, SENTENCES_PER_MARK } from "../src/shared/config";
+import { MIN_FADED, maxMarks } from "../src/shared/config";
 import type { Selection, SentenceId } from "../src/shared/types";
 import type { SelectRequest } from "../src/shared/wire";
 
@@ -122,7 +122,8 @@ export async function selectWithKey(
 ) {
   const keep = select(doc, base, rules, ask);
   const count = doc.sentences.length;
-  const key = count >= MIN_MARK_SENTENCES
+  const cap = maxMarks(count);
+  const key = cap > 0
     ? ask(keyPromptFor(doc, keyPrompt, rules)).then((raw) => parseKey(raw, count), () => undefined)
     : undefined;
   const result = await keep;
@@ -130,7 +131,7 @@ export async function selectWithKey(
   const kept = result.selection.kind === "keep" ? new Set(result.selection.keep) : undefined;
   const answer = await key;
   const ids = (answer ?? []).filter((id) => !kept || kept.has(id));
-  return { ...result, key: ids.slice(0, Math.ceil(count / SENTENCES_PER_MARK)), keyFailed: !answer };
+  return { ...result, key: ids.slice(0, cap), keyFailed: !answer };
 }
 
 export async function select(
