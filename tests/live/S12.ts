@@ -1,3 +1,6 @@
+// Open an X status with fewer than 6 sentences and the Anthropic article on
+// an unenabled site. Press no key. Both pages stay untouched and add 0 lines
+// to the bridge request log.
 import assert from "node:assert/strict";
 import type { Locator } from "playwright";
 import { segment } from "../../src/core/segment";

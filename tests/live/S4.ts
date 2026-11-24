@@ -1,3 +1,6 @@
+// Open the Warp /blog/ URL with the lens on and an empty cache. Within 1000 ms
+// of the bridge response, at least 8 prose sentences are faded. Headings, tables,
+// code blocks, image captions, navigation links, and footer text stay full strength.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { withBrowser } from "./lib/check";

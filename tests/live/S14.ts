@@ -1,3 +1,6 @@
+// Focus Warp's newsletter email field with the page faded. Type the toggle
+// combination and hold Shift for 1 s. The page stays faded and the field
+// receives the typed characters.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { state } from "./lib/browser";

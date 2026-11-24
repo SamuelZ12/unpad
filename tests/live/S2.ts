@@ -1,8 +1,12 @@
+// On Wang, Perfloop, and Warp with the lens on, compare the doc before and
+// after picks. Its innerText and element count stay equal, with no extension
+// classes or attributes inside it. Warp also keeps identical outerHTML.
+// Every sentence sent to the bridge appears in innerText after whitespace is collapsed.
 import assert from "node:assert/strict";
 import type { Locator } from "playwright";
 import { collapse } from "../../src/core/segment";
 import type { CheckContext } from "./run";
-import { roots, type Reference } from "./lib/browser";
+import { roots } from "./lib/browser";
 import { waitForState, withBrowser } from "./lib/check";
 import { cacheEntry, withBridge } from "./lib/fade";
 import { docCrop, save } from "./lib/pixels";
@@ -20,7 +24,6 @@ function snapshot(root: Locator) {
 export default async function S2(context: CheckContext) {
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
     const results: string[] = [];
-    const names: Reference[] = context.mode === "logged-out" ? ["wang", "perfloop", "warp"] : ["wang", "perfloop"];
     // Capture after styles load when the extension starts the bridge request.
     await browser.context.addInitScript((selectors) => {
       const originals: Record<string, { text: string; count: number; html: string }> = {};
@@ -35,7 +38,7 @@ export default async function S2(context: CheckContext) {
         }
       }).observe(document, { subtree: true, attributes: true, attributeFilter: ["data-filler-cut-state"] });
     }, roots);
-    for (const name of names) {
+    for (const name of ["wang", "perfloop", "warp"] as const) {
       const index = (await context.bridge.requests()).length;
       const root = await browser.open(page, name);
       const row = await context.bridge.waitForRequest(index);

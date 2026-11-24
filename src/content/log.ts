@@ -8,6 +8,7 @@ export function createLog(url: string) {
   const pageView = crypto.randomUUID();
   return async (event: SpecificEvent) => {
     const at = new Date().toISOString();
+    // A shown event or a restore has a stable ID within its page view for deduplication.
     const id = event.type === "reveal"
       ? crypto.randomUUID()
       : await sha256(JSON.stringify([

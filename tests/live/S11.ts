@@ -1,3 +1,7 @@
+// Follow a status link from faded Wang, then use Back. The second status has
+// its own picks or stays untouched, with 0 sentences faded from Wang's picks.
+// Wang fades from the cache within 1 s of its text appearing again. Replay
+// and logged-in navigation stay in one document. Logged-out runs report the navigation.
 import assert from "node:assert/strict";
 import { collapse } from "../../src/core/segment";
 import { docKey } from "../../src/shared/keys";

@@ -1,3 +1,5 @@
+// Reload faded Warp. Within 1 s of the text appearing in the DOM the page
+// is faded, and the bridge reports a cache hit with 0 Pi calls.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { roots } from "./lib/browser";

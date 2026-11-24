@@ -68,6 +68,7 @@ export function createPainter() {
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, animation, colors];
   const rule = animation.cssRules[0] as CSSStyleRule;
   const motion = matchMedia("(prefers-reduced-motion: reduce)");
+  // The highlight paints ranges in place and leaves the site's DOM and layout intact.
   const highlight = new Highlight();
   CSS.highlights.set(name, highlight);
   let frame = 0;

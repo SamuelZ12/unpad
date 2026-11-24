@@ -22,6 +22,7 @@ export function enqueueEvents(queue: EventQueue) {
 }
 
 export function chromeEventQueue() {
+  // Persist before posting because Chrome may stop the worker between events.
   return enqueueEvents({
     async load() {
       const { pendingEvents } = await chrome.storage.local.get("pendingEvents");

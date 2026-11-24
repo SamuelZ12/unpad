@@ -1,3 +1,6 @@
+// Read the badge from the service worker for the active tab. It shows … for
+// pending picks, the faded sentence count for faded or picks-ready, nothing
+// for an untouched page, and ! when the bridge fails.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { toggle, waitForState, withBrowser } from "./lib/check";

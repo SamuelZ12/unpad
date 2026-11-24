@@ -1,3 +1,6 @@
+// Start with an empty cache and the lens on. Within 1000 ms of the bridge
+// response, a screenshot shows at least 3 faded sentences and the state is faded.
+// The title and author line keep their original pixels.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { withBrowser } from "./lib/check";

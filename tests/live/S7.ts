@@ -1,3 +1,7 @@
+// Hold Shift alone for 1 s mid-article. Wang is revealed and untouched.
+// Scroll position and a kept sentence's top each move less than 1 px across
+// the 3 readings. Within 100 ms of release the state is faded, with the same
+// sentences faded again. A press shorter than 200 ms reveals nothing.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { atMost, toggle, trace, waitForState, withBrowser } from "./lib/check";

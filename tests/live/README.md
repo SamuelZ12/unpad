@@ -1,0 +1,55 @@
+# Filler Cut live specification
+
+Filler Cut is a Chrome extension for X status pages and Claude blog articles. When picks arrive, the lens fades filler and leaves key sentences at full strength. All text stays in the author's words and in its original place. Option+Shift+F on macOS or Alt+Shift+F elsewhere toggles the lens across tabs. Hold Shift alone for 200 ms to see the original until release, or click a faded sentence to bring that sentence back. The bridge records restores, and the toolbar badge reports the page's state.
+
+## Terms
+
+- **Doc.** The body of an X Article, the text of one X post, or the body of a blog article.
+- **Picks.** The selector's answer for a doc. It keeps everything or names the sentence IDs to keep.
+- **Lens.** The shared on or off setting. It starts on.
+- **Faded.** A sentence drawn in its own text colour at 40% alpha. Its text and layout stay the same.
+- **Restored.** A faded sentence that the reader clicked. It stays at full strength for that page view.
+- **Untouched.** A screenshot crop of the doc matches the original crop from the same page load. Capture the original before picks arrive or with the lens off.
+
+## Checks
+
+Run `bun run verify all` for the numbered checks or pass individual IDs. The default `logged-out` mode uses public X. `replay` serves captured signed-in X markup at its original URL. `logged-in` uses the dedicated Playwright test profile. Warp and the Anthropic article use live pages. See the [verification skill](../../.agents/skills/verify-filler-cut/SKILL.md) for profile rules and evidence paths.
+
+| ID | Behaviour | Modes |
+| --- | --- | --- |
+| [S1](S1.ts) | Wang fades at least 3 sentences within 1000 ms of the bridge response. | All |
+| [S2](S2.ts) | Wang, Perfloop, and Warp keep their text and document structure. | All |
+| [S3](S3.ts) | Perfloop stays untouched on 5 cold loads. | All |
+| [S4](S4.ts) | Warp fades at least 8 prose sentences within 1000 ms of the bridge response. | All |
+| [S5](S5.ts) | Wang stays untouched without valid picks and fades after the bridge restarts. | All |
+| [S6](S6.ts) | A key toggles the lens across tabs. | All |
+| [S7](S7.ts) | Hold Shift to reveal the original without moving the page. | All |
+| [S8](S8.ts) | A click restores exactly one sentence within 100 ms. | All |
+| [S9](S9.ts) | A restore is logged once, including after an outage. | All |
+| [S10](S10.ts) | Fades and restores survive X rebuilding an article. | Replay or logged-in. Logged-out requests use replay. |
+| [S11](S11.ts) | A second status gets no stale fades, and Back restores Wang's fades from the cache. | All |
+| [S12](S12.ts) | A short X post and an unenabled site stay untouched and send no requests. | Live logged-out pages in every suite |
+| [S12-enable-site](S12-enable-site.ts) | The toggle would enable a new site and persist through reload. | Fails when called directly. `all` reports it under **Not built**. |
+| [S13](S13.ts) | The toolbar badge reports pending picks, a fade count, an untouched page, or a bridge failure. | All |
+| [S14](S14.ts) | The lens and reveal keys leave typing alone. | All |
+| [S15](S15.ts) | Links in faded text still work and produce no restore. | All |
+| [S16](S16.ts) | Warp fades from the cache within 1 s after its text is in the DOM. | All |
+
+The reference pages are the [Wang X Article](https://x.com/alexandr_wang/status/2124636606959345776), the [Perfloop X post](https://x.com/tsenart/status/2123483102936785334), and the [Warp article](https://claude.com/blog/how-warp-builds-self-improving-agents-on-claude). Warp's `/blog/` URL redirects to `/resources/articles/`.
+
+## What a check observes
+
+- **Pixels and DOM.** Compare PNG crops, sentence positions, and snapshots of the page's own text and elements. The fade and unfade take at most 160 ms. With reduced motion they happen immediately. Compare settled frames for equality. Timing checks use the first qualifying frame they capture. The polling helpers aim for a 50 ms interval, and some timing checks also read Chromium's screencast timestamps.
+- **Extension state.** Read `data-filler-cut-state` on `<html>` for `idle`, `waiting`, `picks-ready`, `faded`, or `revealed`. Read `data-filler-cut-faded` for the current painted sentence count. S13 reads the per-tab badge through the service worker with `chrome.action.getBadgeText`.
+- **Bridge evidence.** Read `requests.jsonl` for responses, cache hits, and Pi calls. Read `events.jsonl` for what the reader saw or clicked. The selection timing checks compare the logged response time with the browser's screenshot timestamps.
+
+## Findings behind the checks
+
+- On Nov 23, 2026, public X used `[data-article-body-html]` with paragraphs for Articles and `div[dir=auto][lang]` for post text. Replies appeared in a plain list. The signed-in React app used `[data-testid=twitterArticleRichTextView] [data-block=true]` for Articles and `[data-testid=tweetText]` for posts. Its virtualized `[data-testid=cellInnerDiv]` cells move with `translateY`. S11 records whether public X opens a new document. Replay and the signed-in app must navigate within the same document.
+- Scrolling to 18,989 px in the signed-in Wang thread removed the Article. All 14 test ranges lost their anchors. Scrolling back produced new nodes with the same 28 sentences, and rebuilding 28 ranges took 0.3 ms. A `DocKey` hashes the title and the sentences so picks and restores survive replacement nodes within a page view.
+- Ranges and the CSS Custom Highlight API change paint without inserting elements into the page's DOM. In the prototype, the kept sentence stayed at 327 px before and after the fade. The highlight does not provide click targets, so the extension uses `document.caretPositionFromPoint` to find the text under the click.
+- Shift reveal needs key-up, which `chrome.commands` does not deliver. The content script handles both shortcuts. Chromium's synthetic key events reached the content script in the prototype and triggered `chrome.commands` zero times.
+- The bridge receives docs with 6 to 400 sentences. If picks would fade fewer than 3, it keeps everything so dense posts stay readable. In 5 prototype runs per page, Perfloop would have faded 0 to 1 of 10 sentences and Wang 4 to 7 of 29. The later Wang markup yielded 28 sentences.
+- The bridge cache is keyed by doc, selector version, and reader-rules version. The bridge owns those versions. Returning to a page can therefore reuse picks for the current rules with one bridge request.
+
+The measurement setup and raw paths are in `~/.pi/agent/filler-cut/v0-plan-proto/FINDINGS.md`.

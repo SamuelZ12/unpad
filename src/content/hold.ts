@@ -35,6 +35,7 @@ export function listenForHold(start: () => void, end: (heldMs: number) => void) 
     }, holdDelay);
   }, true);
 
+  // Release needs DOM key-up events, which chrome.commands does not provide.
   window.addEventListener("keyup", ({ code }) => {
     down.delete(code);
     if (code === shift) reset();

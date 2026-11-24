@@ -1,3 +1,7 @@
+// Within 5 s of clicking a fade on Wang, the bridge logs 1 restore with the
+// sentence text, Wang URL, and a cache key for the sentences and picks. The
+// same page view logs 1 shown event with total and faded counts. A second
+// click adds nothing. A restore made offline arrives after restart and the next event.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { urls } from "./lib/browser";

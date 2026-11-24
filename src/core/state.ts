@@ -41,6 +41,7 @@ export function fadedIds(state: PageState, docKey: DocKey): readonly SentenceId[
   return state.lensOn && !state.holding && entry ? candidates(entry) : [];
 }
 
+// Derive the view so the lens, hold, and per-doc picks cannot disagree with it.
 export function view(state: PageState): View {
   const docs = [...state.docs.values()];
   if (docs.some((entry) => candidates(entry).length)) {

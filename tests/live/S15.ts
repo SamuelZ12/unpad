@@ -1,3 +1,5 @@
+// Click a link inside a faded sentence on Warp. The browser follows the link,
+// the sentence stays faded at the click, and the bridge records 0 restores.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { waitForState, withBrowser } from "./lib/check";

@@ -1,3 +1,7 @@
+// Restore a sentence on Wang, then remove and rebuild the article as X does
+// when scrolling into replies. Within 200 ms of the article returning, the
+// same sentences are faded, the restore is retained, and the bridge receives
+// 0 new requests. Replay rebuilds the fixture 5 times.
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import type { CheckContext } from "./run";

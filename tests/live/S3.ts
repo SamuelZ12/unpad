@@ -1,3 +1,5 @@
+// Open Perfloop 5 times with the lens on, clearing the cache before each load.
+// All 5 runs end idle with 0 faded sentences and an untouched post.
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { state } from "./lib/browser";

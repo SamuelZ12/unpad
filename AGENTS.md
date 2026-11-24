@@ -4,4 +4,4 @@
 - Research and decisions: `~/dev/agent-memory/building/ventures/longcut-desktop-app-idea-filler-cut.md` (read only; do not commit to agent-memory from this repo's work).
 - Our own throwaway prototype (written before Osso was seen, safe to reuse): `~/.pi/agent/filler-cut/prototype/`. Selector benchmark and Pi prompt: `~/.pi/agent/filler-cut/engine/`.
 - Never load test extensions into Samuel's own Chrome profiles; use isolated profiles under /tmp until he approves his install.
-- v0 behaviour: `docs/spec.md`. Data shape: `docs/architecture.md`. Build order: `docs/plan.md`. Planning prototypes and their numbers: `~/.pi/agent/filler-cut/v0-plan-proto/` (our own, safe to reuse).
+- The live specification is in `tests/live/README.md`. Run it with `bun run verify`. Planning prototypes and their numbers: `~/.pi/agent/filler-cut/v0-plan-proto/` (our own, safe to reuse).

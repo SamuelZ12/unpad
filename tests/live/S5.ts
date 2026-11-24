@@ -1,3 +1,8 @@
+// With the bridge down, Wang is untouched in every sample over 10 s and
+// through 2 toggles. The state is waiting or idle. Restart and reload to see
+// at least 3 faded sentences within 1000 ms of the response, with title and
+// author line unchanged. Clear the cache and reload with invalid output. Wang
+// stays untouched and idle.
 import assert from "node:assert/strict";
 import type { Locator } from "playwright";
 import type { CheckContext } from "./run";

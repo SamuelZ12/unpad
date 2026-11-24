@@ -85,6 +85,8 @@ async function scan() {
 
   const previous = anchoredDocs;
   anchoredDocs = docs.filter(({ root }) => root.isConnected);
+  // X can replace every node in the article when the reader scrolls back.
+  // The same DocKey keeps its picks and restores while the ranges are rebuilt.
   const rebuilt = anchoredDocs.some(({ root, doc }) =>
     state.docs.has(doc.key) && !previous.some((prior) => prior.root === root));
 

@@ -1,3 +1,6 @@
+// Toggle faded Wang twice. The first press gives picks-ready and untouched
+// pixels. The second brings back the first faded image. Each keydown reaches
+// its state within 100 ms. Warp follows both toggles without a reload.
 import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import type { CheckContext } from "./run";
