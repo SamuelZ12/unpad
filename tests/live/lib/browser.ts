@@ -31,13 +31,15 @@ export async function fixture(name: Exclude<Reference, "warp">) {
   </style><main><div data-testid=cellInnerDiv>${article}</div></main>`;
 }
 
-export async function launch(mode: Mode, headless = true, videoDir?: string, actionProfile?: string) {
+export async function launch(
+  mode: Mode, headless = true, videoDir?: string, options: { actionProfile?: string; extension?: string } = {},
+) {
+  const { actionProfile, extension = resolve("dist/extension") } = options;
   const temporary = mode !== "logged-in";
   if (actionProfile && !temporary) throw new Error("Browser action checks require an isolated profile");
   const profile = actionProfile ?? (temporary
     ? await mkdtemp("/tmp/filler-chrome-")
     : resolve(homedir(), ".pi/agent/filler-cut/x-test-profile"));
-  const extension = resolve("dist/extension");
   const cleanup = async () => {
     if (temporary && !actionProfile) await rm(profile, { recursive: true, force: true });
   };

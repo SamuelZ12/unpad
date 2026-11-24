@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { launch, type Mode } from "./lib/browser";
@@ -49,6 +49,7 @@ const build = Bun.spawn([process.execPath, "run", "build"], {
 if (await build.exited !== 0) throw new Error("Extension build failed");
 
 const bridge = await testBridge();
+const fallbackExtension = await mkdtemp("/tmp/filler-extension-fallback-");
 async function runChecks() {
   const reports: string[] = [];
   let accountError: unknown;
@@ -71,7 +72,7 @@ async function runChecks() {
     let message: string;
     try {
       if (accountError && actualMode === "logged-in") throw accountError;
-      message = `PASS ${id} [${actualMode}] ${await check({ evidence: directory, mode: actualMode, bridge } as CheckContext)}`;
+      message = `PASS ${id} [${actualMode}] ${await check({ evidence: directory, mode: actualMode, bridge, fallbackExtension })}`;
     } catch (error) {
       process.exitCode = 1;
       message = `FAIL ${id} [${actualMode}] ${error}`;
@@ -85,14 +86,26 @@ async function runChecks() {
 }
 
 try {
-  if (recording) await demo({ evidence, mode, bridge });
-  else await runChecks();
+  if (recording) {
+    await demo({ evidence, mode, bridge, fallbackExtension });
+  } else {
+    // CDP sends page keys. Install the same extension with an unassigned
+    // browser shortcut for checks that exercise the page-key fallback.
+    await cp("dist/extension", fallbackExtension, { recursive: true });
+    const path = join(fallbackExtension, "manifest.json");
+    const manifest = await Bun.file(path).json();
+    delete manifest.commands._execute_action.suggested_key;
+    await Bun.write(path, JSON.stringify(manifest));
+    await runChecks();
+  }
 } finally {
+  await rm(fallbackExtension, { recursive: true, force: true });
   await bridge.close(evidence);
 }
 
 export interface CheckContext {
   evidence: string;
   mode: Mode;
+  fallbackExtension: string;
   bridge: Awaited<ReturnType<typeof testBridge>>;
 }

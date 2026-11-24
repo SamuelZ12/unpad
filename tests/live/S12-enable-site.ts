@@ -76,7 +76,7 @@ export default async function S12EnableSite(context: CheckContext) {
   try {
     return await withBridge(context, async () => {
       const results: string[] = [];
-      const browser = await launch("logged-out", true, undefined, profile);
+      const browser = await launch("logged-out", true, undefined, { actionProfile: profile });
       const { context: tabs } = browser;
       try {
         const action = await connectAction(tabs, profile);
@@ -197,7 +197,7 @@ export default async function S12EnableSite(context: CheckContext) {
         await browser.close();
       }
 
-      const restarted = await launch("logged-out", true, undefined, profile);
+      const restarted = await launch("logged-out", true, undefined, { actionProfile: profile });
       try {
         const worker = await extensionWorker(restarted.context);
         const page = restarted.context.pages()[0];

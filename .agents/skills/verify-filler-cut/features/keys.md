@@ -19,4 +19,4 @@ Use a fresh test profile and let the first fade finish. Run `bun run verify S6 S
 
 ## Gotchas
 
-Synthetic keys reach the page listeners. Chrome's assigned action shortcut takes precedence over the fallback page key, so isolated tests clear the assignment before testing page keys.
+Synthetic keys reach the page listeners. Chrome's assigned action shortcut takes precedence over the fallback page key. Page-key checks load a temporary copy of the extension with the browser shortcut unassigned.
