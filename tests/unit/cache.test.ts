@@ -10,6 +10,8 @@ import { startBridge } from "../../bridge/server";
 const doc = { title: "Title", sentences: ["One.", "Two.", "Three.", "Four.", "Five.", "Six."] };
 const rules = new TextEncoder().encode("Rules");
 const prompt = "Prompt";
+const keyPrompt = "Key prompt";
+const keyVersions = await versionsFor(prompt, rules, undefined, keyPrompt);
 
 test("the cache key changes with the rules bytes, the prompt, and the fade threshold", async () => {
   const versions = await Promise.all([
@@ -36,7 +38,7 @@ test("checked selections have their own cache keys and SKIP is cached", async ()
     const answer = command.at(-1)?.includes(check.url) ? "SKIP" : "[1,2,3]";
     return { stdout: new Blob([answer]).stream(), exited: Promise.resolve(0), kill: () => {} };
   };
-  const server = await startBridge({ port: 0, dataDir, versions, prompt, rules: "Rules" }, spawn);
+  const server = await startBridge({ port: 0, dataDir, versions, keyVersions, prompt, keyPrompt, rules: "Rules" }, spawn);
   try {
     const post = async (request: typeof doc | typeof checked) => {
       const response = await fetch(new URL("/select", server.url), { method: "POST", body: JSON.stringify(request) });
@@ -64,7 +66,7 @@ test("overlapping requests share a Pi call and ignore incomplete cache files", a
     started.resolve();
     return { stdout: new Blob(["[1,2,3]"]).stream(), exited: exit.promise, kill: () => {} };
   };
-  const server = await startBridge({ port: 0, dataDir, versions, prompt, rules: "Rules" }, spawn);
+  const server = await startBridge({ port: 0, dataDir, versions, keyVersions, prompt, keyPrompt, rules: "Rules" }, spawn);
 
   try {
     const key = await cacheKeyFor(doc, versions);
@@ -96,6 +98,42 @@ test("overlapping requests share a Pi call and ignore incomplete cache files", a
     expect(log.reduce((count, line) => count + line.piCalls, 0)).toBe(1);
   } finally {
     exit.resolve(0);
+    await server.stop(true);
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("a marked selection has its own version and never reuses a legacy cache entry", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "filler-cache-"));
+  const versions = await versionsFor(prompt, rules);
+  expect(keyVersions.selectorVersion).not.toBe(versions.selectorVersion);
+  expect(keyVersions.selectorVersion).not.toBe((await versionsFor(prompt, rules, undefined, keyPrompt + "\n")).selectorVersion);
+  const longDoc = { ...doc, sentences: Array(20).fill("A sentence.") };
+  const legacyKey = await cacheKeyFor(longDoc, versions);
+  const markedKey = await cacheKeyFor(longDoc, keyVersions);
+  let spawns = 0;
+  const spawn: PiSpawn = (command) => {
+    spawns++;
+    const answer = command.at(-1)?.startsWith(keyPrompt) ? "[1,2,3]" : "ALL";
+    return { stdout: new Blob([answer]).stream(), exited: Promise.resolve(0), kill: () => {} };
+  };
+  const server = await startBridge({ port: 0, dataDir, versions, keyVersions, prompt, keyPrompt, rules: "Rules" }, spawn);
+  try {
+    const post = async (request: typeof longDoc & { key?: true }) => {
+      const response = await fetch(new URL("/select", server.url), { method: "POST", body: JSON.stringify(request) });
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const legacy = { cacheKey: legacyKey, selection: { kind: "keep-all" } };
+    const marked = { ...legacy, cacheKey: markedKey, key: [1, 2] };
+    expect(await post(longDoc)).toEqual(legacy);
+    expect(spawns).toBe(1);
+    await writeFile(cachePath(dataDir, markedKey), JSON.stringify({ ...legacy, cacheKey: markedKey }));
+    expect(await post({ ...longDoc, key: true })).toEqual(marked);
+    expect(await post({ ...longDoc, key: true })).toEqual(marked);
+    expect(await post(longDoc)).toEqual(legacy);
+    expect(spawns).toBe(3);
+  } finally {
     await server.stop(true);
     await rm(dataDir, { recursive: true, force: true });
   }

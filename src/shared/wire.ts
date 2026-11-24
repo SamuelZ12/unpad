@@ -5,11 +5,13 @@ export interface SelectRequest {
   readonly title: string;
   readonly sentences: readonly string[];
   readonly check?: { readonly url: string };
+  readonly key?: true;
 }
 
 export interface SelectResponse {
   readonly cacheKey: CacheKey;
   readonly selection: Selection;
+  readonly key?: readonly SentenceId[];
 }
 
 export interface ErrorResponse {
@@ -64,8 +66,10 @@ function isLogEvent(value: unknown): value is LogEvent {
   switch (value.type) {
     case "shown":
       return isCacheKey(value.cacheKey) && isCount(value.total) && isCount(value.faded)
-        && value.faded <= value.total;
+        && value.faded <= value.total
+        && (value.marks === undefined || (isCount(value.marks) && value.marks <= value.total - value.faded));
     case "restore":
+    case "unmark":
       return isCacheKey(value.cacheKey) && isSentenceId(value.sentenceId)
         && typeof value.text === "string";
     case "reveal":
@@ -79,18 +83,24 @@ export function parseSelectRequest(value: unknown): SelectRequest | undefined {
   if (!isRecord(value) || typeof value.title !== "string" || !Array.isArray(value.sentences)
     || value.sentences.length < MIN_SENTENCES || value.sentences.length > MAX_SENTENCES
     || !value.sentences.every((sentence) => typeof sentence === "string")) return undefined;
-  const { title, sentences, check } = value;
-  if (check === undefined) return { title, sentences };
+  const { title, sentences, check, key } = value;
+  if (key !== undefined && key !== true) return undefined;
+  const doc: SelectRequest = key ? { title, sentences, key } : { title, sentences };
+  if (check === undefined) return doc;
   if (!isRecord(check) || typeof check.url !== "string") return undefined;
   const url = URL.parse(check.url);
   if (!url || (url.protocol !== "http:" && url.protocol !== "https:") ||
     check.url !== url.origin + url.pathname) return undefined;
-  return { title, sentences, check: { url: check.url } };
+  return { ...doc, check: { url: check.url } };
 }
 
 export function parseSelectResponse(value: unknown): SelectResponse | undefined {
   if (!isRecord(value) || !isCacheKey(value.cacheKey) || !isSelection(value.selection)) return undefined;
-  return { cacheKey: value.cacheKey, selection: value.selection };
+  const { cacheKey, selection, key } = value;
+  if (Array.isArray(key) && key.every(isSentenceId) && new Set(key).size === key.length) {
+    return { cacheKey, selection, key };
+  }
+  return { cacheKey, selection };
 }
 
 export function parseErrorResponse(value: unknown): ErrorResponse | undefined {

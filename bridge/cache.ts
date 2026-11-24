@@ -1,9 +1,9 @@
 import { readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { docKey, sha256 } from "../src/shared/keys";
-import type { CacheKey, Selection } from "../src/shared/types";
+import type { CacheKey } from "../src/shared/types";
 import { parseSelectResponse } from "../src/shared/wire";
-import type { HealthResponse, SelectRequest } from "../src/shared/wire";
+import type { HealthResponse, SelectRequest, SelectResponse } from "../src/shared/wire";
 
 export async function cacheKeyFor(doc: SelectRequest, versions: HealthResponse): Promise<CacheKey> {
   const { selectorVersion, rulesVersion } = versions;
@@ -16,19 +16,18 @@ export function cachePath(dataDir: string, key: CacheKey): string {
   return join(dataDir, "cache", `${key}.json`);
 }
 
-export async function readCache(dataDir: string, key: CacheKey): Promise<Selection | undefined> {
+export async function readCache(dataDir: string, key: CacheKey): Promise<SelectResponse | undefined> {
   try {
     const entry = JSON.parse(await readFile(cachePath(dataDir, key), "utf8"));
-    return parseSelectResponse(entry)?.selection;
+    const picks = parseSelectResponse(entry);
+    return picks?.cacheKey === key ? picks : undefined;
   } catch (error) {
     if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
 }
 
-interface CacheEntry extends SelectRequest, HealthResponse {
-  readonly cacheKey: CacheKey;
-  readonly selection: Selection;
+interface CacheEntry extends Omit<SelectRequest, "key">, HealthResponse, SelectResponse {
   readonly raw: string;
   readonly ms: number;
 }

@@ -10,6 +10,8 @@ const cacheKey = "a".repeat(64);
 test("select request requires a title and a supported number of strings", () => {
   const sentences = Array(MIN_SENTENCES).fill("A sentence.");
   expect(parseSelectRequest({ title: "", sentences })).toEqual({ title: "", sentences });
+  expect(parseSelectRequest({ title: "", sentences, key: true })).toEqual({ title: "", sentences, key: true });
+  expect(parseSelectRequest({ title: "", sentences, key: false })).toBeUndefined();
   expect(parseSelectRequest({ sentences })).toBeUndefined();
   expect(parseSelectRequest({ title: "", sentences: [42, ...sentences.slice(1)] })).toBeUndefined();
   expect(parseSelectRequest({ title: "", sentences: sentences.slice(1) })).toBeUndefined();
@@ -19,6 +21,9 @@ test("select request requires a title and a supported number of strings", () => 
 test("select response requires a cache key and a selection with integer ids", () => {
   const selection = { kind: "keep", keep: [1, 3] };
   expect<unknown>(parseSelectResponse({ cacheKey, selection })).toEqual({ cacheKey, selection });
+  expect<unknown>(parseSelectResponse({ cacheKey, selection, key: [] })).toEqual({ cacheKey, selection, key: [] });
+  expect<unknown>(parseSelectResponse({ cacheKey, selection, key: [3, 1] })).toEqual({ cacheKey, selection, key: [3, 1] });
+  expect<unknown>(parseSelectResponse({ cacheKey, selection, key: [3, 3] })).toEqual({ cacheKey, selection });
   expect(parseSelectResponse({ cacheKey, selection: { kind: "keep-all" } })).toBeDefined();
   expect<unknown>(parseSelectResponse({ cacheKey, selection: { kind: "skip" } }))
     .toEqual({ cacheKey, selection: { kind: "skip" } });
@@ -43,10 +48,14 @@ test("events request checks each event", () => {
     { ...common, type: "shown", cacheKey, total: 6, faded: 3 },
     { ...common, type: "restore", cacheKey, sentenceId: 2, text: "Sentence." },
     { ...common, type: "reveal", heldMs: 100 },
+    { ...common, type: "shown", cacheKey, total: 6, faded: 3, marks: 2 },
+    { ...common, type: "unmark", cacheKey, sentenceId: 3, text: "Key sentence." },
   ];
   expect<unknown>(parseEventsRequest({ events })).toEqual({ events });
   expect(parseEventsRequest({})).toBeUndefined();
   expect(parseEventsRequest({ events: [{ ...events[1], sentenceId: "2" }] })).toBeUndefined();
+  expect(parseEventsRequest({ events: [{ ...events[3], marks: 4 }] })).toBeUndefined();
+  expect(parseEventsRequest({ events: [{ ...events[4], text: undefined }] })).toBeUndefined();
 });
 
 test("response parsers require their fields", () => {

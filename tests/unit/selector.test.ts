@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PI_COMMAND, parseSelection, runPi, select } from "../../bridge/selector";
+import { PI_COMMAND, parseKey, parseSelection, runPi, select, selectWithKey } from "../../bridge/selector";
 import type { PiSpawn } from "../../bridge/selector";
 
 test("accepts ALL with or without JSON quotes, integers, and digit strings", () => {
@@ -80,4 +80,47 @@ test("uses the specified Pi command, scrubs the environment, and kills it on tim
 
   await expect(runPi("prompt", "/tmp", spawn, 5)).rejects.toThrow("Pi timed out");
   expect(killed).toEqual(["SIGKILL"]);
+});
+
+test("key answers are ordered arrays of unique in-range integers", () => {
+  expect<unknown>(parseKey("[6,1,3]", 6)).toEqual([6, 1, 3]);
+  expect(parseKey("[]", 6)).toEqual([]);
+  for (const raw of ["[0]", "[7]", "[1.5]", "[1,1]", '["3"]', "[1]\nDone", "ALL", "null"]) {
+    expect(parseKey(raw, 6)).toBeUndefined();
+  }
+});
+
+test("key and keep calls overlap, then kept keys are capped in priority order", async () => {
+  const doc = { title: "", sentences: Array(21).fill("Sentence."), key: true } as const;
+  const keep = Promise.withResolvers<string>();
+  const prompts: string[] = [];
+  const pending = selectWithKey(doc, "Keep", "Key", "", (prompt) => {
+    prompts.push(prompt);
+    return prompt.startsWith("Keep") ? keep.promise : Promise.resolve("[21,4,2,3,1]");
+  });
+  expect(prompts).toHaveLength(2);
+  keep.resolve("[1,2,3,4]");
+  expect<unknown>((await pending).key).toEqual([4, 2, 3]);
+});
+
+test("short documents use one call, and keep-all can carry keys from 20 sentences", async () => {
+  const pick = (count: number) => {
+    let calls = 0;
+    const doc = { title: "", sentences: Array(count).fill("Sentence.") };
+    return selectWithKey(doc, "Keep", "Key", "", async () => ++calls === 1 ? "ALL" : "[3,2,1]")
+      .then(({ key }) => ({ key, calls }));
+  };
+  expect(await pick(19)).toEqual({ key: [], calls: 1 });
+  expect<unknown>(await pick(20)).toEqual({ key: [3, 2], calls: 2 });
+});
+
+test("failed and malformed key answers leave keep-all intact and SKIP drops keys", async () => {
+  const doc = { title: "", sentences: Array(20).fill("Sentence."), check: { url: "https://example.com/" } };
+  for (const keyAnswer of [() => { throw new Error("Pi timed out"); }, () => "[1] trailing text"]) {
+    const result = await selectWithKey(doc, "Keep", "Key", "", async (prompt) =>
+      prompt.startsWith("Key") ? keyAnswer() : "ALL");
+    expect(result).toEqual({ raw: "ALL", selection: { kind: "keep-all" }, key: [] });
+  }
+  expect(await selectWithKey(doc, "Keep", "Key", "", async (prompt) => prompt.startsWith("Key") ? "[1]" : "SKIP"))
+    .toEqual({ raw: "SKIP", selection: { kind: "skip" }, key: [] });
 });

@@ -1,4 +1,4 @@
-import { MIN_FADED } from "../src/shared/config";
+import { MIN_FADED, MIN_MARK_SENTENCES, SENTENCES_PER_MARK } from "../src/shared/config";
 import type { Selection, SentenceId } from "../src/shared/types";
 import type { SelectRequest } from "../src/shared/wire";
 
@@ -89,16 +89,55 @@ export async function runPi(
   }
 }
 
+function sourceFor(doc: SelectRequest) {
+  const title = doc.title ? `Title: ${doc.title.replace(/\s+/g, " ")}\n` : "";
+  const sentences = doc.sentences.map((sentence, i) => `${i + 1}: ${sentence}\n`).join("");
+  return `\n${title}SOURCE:\n${sentences}`;
+}
+
+export function keyPromptFor(doc: SelectRequest, prompt: string, rules: string) {
+  return `${prompt.trimEnd()}${rules}${sourceFor(doc)}`;
+}
+
+export function parseKey(raw: string, count: number): SentenceId[] | undefined {
+  let values: unknown;
+  try {
+    values = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(values) || !values.every((id) => Number.isInteger(id) && id >= 1 && id <= count)
+    || new Set(values).size !== values.length) return undefined;
+  return values;
+}
+
+export async function selectWithKey(
+  doc: SelectRequest,
+  base: string,
+  keyPrompt: string,
+  rules: string,
+  ask: (prompt: string) => Promise<string>,
+) {
+  const keep = select(doc, base, rules, ask);
+  const count = doc.sentences.length;
+  const key = count >= MIN_MARK_SENTENCES
+    ? ask(keyPromptFor(doc, keyPrompt, rules)).then((raw) => parseKey(raw, count), () => undefined)
+    : undefined;
+  const result = await keep;
+  if (result.selection.kind === "skip") return { ...result, key: [] };
+  const kept = result.selection.kind === "keep" ? new Set(result.selection.keep) : undefined;
+  const ids = (await key ?? []).filter((id) => !kept || kept.has(id));
+  return { ...result, key: ids.slice(0, Math.ceil(count / SENTENCES_PER_MARK)) };
+}
+
 export async function select(
   doc: SelectRequest,
   base: string,
   rules: string,
   ask: (prompt: string) => Promise<string>,
 ): Promise<{ selection: Selection; raw: string }> {
-  const title = doc.title ? `Title: ${doc.title.replace(/\s+/g, " ")}\n` : "";
-  const sentences = doc.sentences.map((sentence, i) => `${i + 1}: ${sentence}\n`).join("");
-  const checkUrl = doc.check ? `URL: ${doc.check.url}\n` : "";
-  const prompt = `${doc.check ? CHECK_PROMPT : ""}${base}${rules}\n${checkUrl}${title}SOURCE:\n${sentences}`;
+  const checkUrl = doc.check ? `\nURL: ${doc.check.url}` : "";
+  const prompt = `${doc.check ? CHECK_PROMPT : ""}${base}${rules}${checkUrl}${sourceFor(doc)}`;
   let raw = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     raw = await ask(prompt);
