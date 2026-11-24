@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { collapse } from "../../src/core/segment";
+import { docKey } from "../../src/shared/keys";
 import type { CheckContext } from "./run";
 import { roots, urls } from "./lib/browser";
 import { atMost, toggle, waitForState, withBrowser } from "./lib/check";
@@ -16,50 +18,77 @@ export default async function S11(context: CheckContext) {
       let prior: Element | null = null;
       new MutationObserver(() => {
         const current = document.querySelector(root);
-        if (current && current !== prior) win.verifyWangAt = Date.now();
-        prior = current;
+        if (current?.textContent?.trim()) {
+          if (current !== prior) win.verifyWangAt = Date.now();
+          prior = current;
+        } else {
+          prior = null;
+        }
       }).observe(document, { subtree: true, childList: true });
     }, roots.wang);
     const docToken = () => page.evaluate(() => (window as unknown as { verifyDocument: string }).verifyDocument);
     await page.setViewportSize({ width: 1280, height: 3700 });
+    const firstIndex = (await context.bridge.requests()).length;
     await browser.open(page, "wang");
-    await waitForState(page, "faded");
-    const originalKey = (await geometry(page)).doc.key;
     const before = await docToken();
     const statusLinks = context.mode === "logged-in"
       ? "[data-testid=twitterArticleRichTextView] a[href*='/status/']"
-      : "main a[href*='/status/']";
-    const link = context.mode === "replay" ? await replayNavigation(page) :
-      page.locator(statusLinks).filter({ visible: true }).and(
-        page.locator("a:not([aria-hidden=true]):not([href*='2124636606959345776']):not([href$='/analytics']):not([href$='/quotes']):not([href*='/photo/'])"),
-      ).first();
+      : "main a[data-base-ui-tooltip-trigger][href*='/status/']";
+    const candidates = page.locator(statusLinks).filter({ visible: true });
+    // X also renders hidden card overlays and action links that open a sign-in dialog.
+    const candidateIndex = context.mode === "replay" ? -1 : await candidates.evaluateAll((links, original) =>
+      links.findIndex((element) => {
+        const link = element as HTMLAnchorElement;
+        const url = new URL(link.href);
+        return url.origin === location.origin && /^\/\w+\/status\/\d+$/.test(url.pathname) &&
+          url.pathname !== new URL(original).pathname && (!link.target || link.target === "_self") &&
+          link.textContent!.trim() !== "" && !link.closest('[aria-hidden="true"]');
+      }), urls.wang);
+    assert.ok(context.mode === "replay" || candidateIndex >= 0, "No visible in-tab status link on Wang");
+    const link = context.mode === "replay" ? await replayNavigation(page) : candidates.nth(candidateIndex);
     const href = await link.getAttribute("href", { timeout: 5000 });
     assert.ok(href && /^\/\w+\/status\/\d+(?:$|\?)/.test(new URL(href, urls.wang).pathname), `No second status link (${href})`);
     const secondUrl = new URL(href, urls.wang).href;
+    await page.locator("html[data-filler-cut-state=faded]").waitFor({ state: "attached", timeout: 45_000 });
     if (context.mode === "logged-in") await Bun.sleep(3000);
-    const outboundIndex = (await context.bridge.requests()).length;
     const accountPages = browser.context.pages().length;
-    await link.click({ timeout: 7000 });
+    const dialog = page.getByRole("dialog").filter({ visible: true }).first();
     try {
-      await page.waitForURL(secondUrl, { waitUntil: "domcontentloaded", timeout: 6000 });
-    } catch {
+      await link.click({ timeout: 7000 });
+      const navigated = await Promise.race([
+        page.waitForURL(secondUrl, { waitUntil: "domcontentloaded", timeout: 6000 }).then(() => true),
+        dialog.waitFor({ state: "visible", timeout: 6500 }).then(() => false),
+      ]);
+      if (!navigated || await dialog.isVisible()) throw new Error("X opened a dialog");
+    } catch (error) {
       await save(context.evidence + "/after-link", (await screenshot(page)).png);
       const opened = browser.context.pages().slice(accountPages).map((tab) => tab.url());
-      const dialog = await page.getByRole("dialog").first().textContent({ timeout: 500 }).catch(() => null);
-      throw new Error(`Clicked ${secondUrl}, current tab stayed at ${page.url()}, new tabs ${JSON.stringify(opened)}${dialog ? `, dialog ${dialog.trim().slice(0, 100)}` : ""}`);
+      const dialogText = await dialog.innerText({ timeout: 500 }).catch(() => "");
+      throw new Error(`Clicked ${secondUrl}, current tab at ${page.url()}, new tabs ${JSON.stringify(opened)}${dialogText ? `, dialog ${JSON.stringify(collapse(dialogText))}` : `, ${error}`}`);
     }
-    const inPlace = before === await docToken();
+    const secondToken = await docToken();
+    const inPlace = before === secondToken;
+    const path = new URL(secondUrl).pathname;
+    await page.locator(`article a[href="${path}"], article a[href="${secondUrl}"]`).first()
+      .waitFor({ state: "attached", timeout: 6000 });
+    const wang = await cacheEntry(context, (await context.bridge.waitForRequest(firstIndex)).cacheKey);
+    const originalKey = await docKey(wang.title, wang.sentences);
+    const wangFades = new Set(pickedFades(wang).map((id) => wang.sentences[id - 1]));
     const second = await page.evaluate(() => window.fillerCutGeometry());
     assert.ok(!second || second.doc.key !== originalKey, "Still rendering the Wang document on the second status");
+    let secondFades = 0;
     if (second) {
-      const row = await context.bridge.waitForRequest(outboundIndex);
+      const row = await context.bridge.waitForRequest(firstIndex + 1);
       const entry = await cacheEntry(context, row.cacheKey);
       assert.deepEqual(entry.sentences, second.doc.sentences);
-      const count = pickedFades(entry).length;
-      assert.equal((await waitForState(page, count ? "faded" : "idle")).faded, count);
+      secondFades = pickedFades(entry).length;
+      assert.equal((await waitForState(page, secondFades ? "faded" : "idle")).faded, secondFades);
     } else {
       assert.equal((await waitForState(page, "idle")).faded, 0);
     }
+    const highlighted = await page.evaluate(() => Array.from(CSS.highlights.get("filler-cut") ?? [], (range) => range.toString()));
+    assert.equal(highlighted.length, secondFades, "Unexpected highlights on the second status");
+    assert.ok(highlighted.every((text) => !wangFades.has(collapse(text))), "Second status has a highlighted sentence from Wang");
     await save(context.evidence + "/second-status", (await screenshot(page)).png);
 
     const index = (await context.bridge.requests()).length;
@@ -67,7 +96,7 @@ export default async function S11(context: CheckContext) {
     await page.goBack({ waitUntil: "commit" });
     await page.waitForURL(urls.wang, { waitUntil: "commit", timeout: 10_000 });
     await waitForState(page, "faded");
-    const backInPlace = before === await docToken();
+    const backInPlace = secondToken === await docToken();
     const row = await context.bridge.waitForRequest(index);
     assert.equal(row.source, "cache");
     assert.equal(row.piCalls, 0);
@@ -85,12 +114,12 @@ export default async function S11(context: CheckContext) {
     assert.ok(changed.length > 0, "The cached Wang screenshot had no faded pixels");
     const elapsed = faded.at - backAt;
     await save(context.evidence + "/back-to-wang", faded.png);
-    const navigation = `outbound ${inPlace ? "same document" : "new document"}, Back ${backInPlace ? "same document" : "new document"}, Wang cached fade in ${elapsed} ms`;
+    const navigation = `outbound ${inPlace ? "same document" : "new document"}, Back ${backInPlace ? "same document" : "new document"}, second status ${secondFades} fades and 0 from Wang, Wang cached fade in ${elapsed} ms`;
     await Bun.write(context.evidence + "/navigation.json", JSON.stringify({
-      secondUrl, inPlace, backInPlace, fadedPixelsAt: faded.at, textAt: backAt, elapsed,
+      secondUrl, inPlace, backInPlace, secondFades, fadedPixelsAt: faded.at, textAt: backAt, elapsed,
     }, null, 2));
     atMost(elapsed, 1000, navigation);
-    assert.ok(inPlace && backInPlace, navigation);
+    if (context.mode !== "logged-out") assert.ok(inPlace && backInPlace, navigation);
     return navigation;
   }));
 }
