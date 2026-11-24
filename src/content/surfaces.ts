@@ -15,6 +15,8 @@ const editable = '[contenteditable=""], [contenteditable="true" i], [contentedit
 const privateText = `[hidden], [aria-hidden=true], ${editable}`;
 const genericNonProse = `${nonProse}, ${editable}`;
 const prose = "p, li, blockquote";
+// Hand-written pages put the text straight into a layout table cell or <font> and break paragraphs with <br>.
+const bareNonProse = `nav, header, footer, aside, form, pre, script, style, noscript, textarea, template, ${privateText}`;
 const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
 
@@ -55,7 +57,7 @@ function blog(document: Document, path: string): SurfaceDoc[] {
 
 function genericTextWalker(root: Element) {
   return root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, (node) => {
-    if (!(node instanceof Element)) return NodeFilter.FILTER_ACCEPT;
+    if (!(node instanceof Element) || node.localName === "br") return NodeFilter.FILTER_ACCEPT;
     return node.matches(privateText) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
   });
 }
@@ -63,8 +65,20 @@ function genericTextWalker(root: Element) {
 function genericText(root: Element) {
   const walker = genericTextWalker(root);
   let text = "";
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) text += (node as Text).data;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node instanceof Text ? node.data : "\n";
   return collapse(text);
+}
+
+function bareText(document: Document) {
+  let best: Element | undefined;
+  let most = 0;
+  for (const element of document.querySelectorAll("body *")) {
+    if (element.closest(bareNonProse)) continue;
+    let length = 0;
+    for (const node of element.childNodes) if (node instanceof Text) length += collapse(node.data).length;
+    if (length > most) [best, most] = [element, length];
+  }
+  return best;
 }
 
 function genericArticle(document: Document, checkArticle: boolean): SurfaceDoc[] {
@@ -84,6 +98,11 @@ function genericArticle(document: Document, checkArticle: boolean): SurfaceDoc[]
   const blocks = [...root.querySelectorAll(prose)].filter((block) =>
     !block.closest(genericNonProse) &&
     ![...block.querySelectorAll(prose)].some((child) => !child.closest(privateText)));
+  if (!blocks.length) {
+    const block = bareText(document);
+    if (!block || (checkArticle && genericText(block).split(" ").length < MIN_ARTICLE_BLOCKS * MIN_BLOCK_WORDS)) return [];
+    return [{ root: block, title: collapse(document.title), blocks: [block], surface: "blog", textWalker: genericTextWalker }];
+  }
   if (checkArticle && blocks.filter((block) =>
     !block.closest("ul, ol, li, dl, menu, [role=list], [role=listitem]") &&
     genericText(block).split(" ").length >= MIN_BLOCK_WORDS).length < MIN_ARTICLE_BLOCKS) return [];

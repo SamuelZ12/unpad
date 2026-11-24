@@ -74,3 +74,26 @@ test("generic site mode needs five non-list blocks of at least 40 words", async 
     expect(await docs(four, false)).toBe(1);
   });
 }, 15_000);
+
+test("a page of bare text split by <br> yields one document of whole sentences", async () => {
+  await withExtraction(async (page, module) => {
+    const html = await Bun.file("tests/fixtures/blog/paulgraham-jessica.html").text();
+    await page.route("**/*", (route) => route.request().isNavigationRequest()
+      ? route.fulfill({ contentType: "text/html", body: html })
+      : route.abort());
+    await page.goto("https://paulgraham.com/jessica.html");
+    const docs = await page.evaluate(async (source) => {
+      const { extract } = await import(source) as typeof import("../../src/content/anchor");
+      return (await extract(document, new URL(location.href))).map(({ doc, ranges }) => ({
+        surface: doc.surface, title: doc.title, sentences: doc.sentences,
+        ranges: ranges.map((range) => range.toString().replace(/\s+/gu, " ").trim()),
+      }));
+    }, module);
+    expect(docs.map(({ surface, title }) => [surface, title])).toEqual([["blog", "Jessica Livingston"]]);
+    expect(docs[0].ranges).toEqual([...docs[0].sentences]);
+    // The first sentence spans a source newline. The second ends at a <br>.
+    expect(docs[0].sentences).toContain('A few months ago an article about Y Combinator said that early on it had been a "one-man show."');
+    expect(docs[0].sentences).toContain("So let me tell you a little about Jessica.");
+    expect(docs[0].sentences).toContain("YC had 4 founders.");
+  });
+}, 15_000);

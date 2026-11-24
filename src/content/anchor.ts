@@ -16,10 +16,15 @@ function anchor(block: Element, textWalker?: (block: Element) => TreeWalker) {
   const nodes: { node: Text; offset: number }[] = [];
   let text = "";
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const piece = node as Text;
-    if (!piece.length) continue;
-    nodes.push({ node: piece, offset: text.length });
-    text += piece.data;
+    // A <br> from the generic walker ends a sentence. The newline is whitespace, so no range starts or ends on it.
+    if (!(node instanceof Text)) {
+      text += "\n";
+      continue;
+    }
+    if (!node.length) continue;
+    nodes.push({ node, offset: text.length });
+    // Generic pages hard-wrap their source. HTML renders those newlines as spaces.
+    text += textWalker ? node.data.replace(/[\n\r\f]/gu, " ") : node.data;
   }
 
   let cursor = 0;
