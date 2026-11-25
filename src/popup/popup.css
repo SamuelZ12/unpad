@@ -1,6 +1,5 @@
 :root {
   color-scheme: light dark;
-  font: 13px/1.45 system-ui, sans-serif;
   --ink: light-dark(#242423, #f3f2ef);
   --quiet: light-dark(#64635f, #aaa9a3);
   --rule: light-dark(#e8e7e3, #3b3b39);
@@ -16,6 +15,7 @@ body {
   width: 312px;
   margin: 0;
   padding: 16px 18px 13px;
+  font: 13px/1.45 system-ui, sans-serif;
 }
 
 header, footer, #site-setting, li {
@@ -74,7 +74,10 @@ p {
   overflow-wrap: anywhere;
 }
 
-#site-setting .muted { white-space: nowrap; }
+.muted {
+  font-size: 12px;
+  white-space: nowrap;
+}
 
 input[type="checkbox"] {
   margin: 0;
