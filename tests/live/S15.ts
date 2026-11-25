@@ -24,8 +24,8 @@ export default async function S15(context: CheckContext) {
     });
     const [, , count] = await Promise.all([destination, link.click({ timeout: 10_000 }), atClick]);
     assert.equal(count, ids.length);
-    const clicks = (await context.bridge.events()).slice(from).filter(({ type }) => type === "restore" || type === "unmark");
+    const clicks = (await context.bridge.events()).slice(from).filter(({ type }) => type === "restore");
     assert.equal(clicks.length, 0);
-    return `Kept link followed to ${href}, no expansion or unmark`;
+    return `Kept link followed to ${href}, no expansion`;
   }));
 }

@@ -37,5 +37,6 @@ export type LogEvent =
 	| { readonly type: "shown"; readonly id: string; readonly at: string; readonly pageView: string; readonly url: string; readonly cacheKey: CacheKey; readonly total: number; readonly faded: number; readonly marks?: number }
 	| SentenceClickEvent<"restore">
 	| SentenceClickEvent<"recut">
+	/** 0.3.1 and older logged a click on a mark. Kept so their batches and old log rows still parse. */
 	| SentenceClickEvent<"unmark">
 	| { readonly type: "reveal"; readonly id: string; readonly at: string; readonly pageView: string; readonly url: string; readonly heldMs: number };

@@ -6,7 +6,6 @@ import { documentRoute, type PageSnapshot } from "../shared/page-snapshot";
 import { statusFeedback } from "../shared/status-copy";
 import { MIN_MARK_SENTENCES } from "../shared/config";
 import { extract, type AnchoredDoc } from "./anchor";
-import { listenForMarkClick } from "./click";
 import { createLog } from "./log";
 import { listenForHold } from "./hold";
 import { hasFocusedEditor, listenForToggle } from "./keys";
@@ -116,7 +115,7 @@ function start() {
     pendingFeedback = undefined;
   }
 
-  function logClicks(type: "restore" | "recut" | "unmark", docKey: DocKey, ids: readonly SentenceId[]) {
+  function logClicks(type: "restore" | "recut", docKey: DocKey, ids: readonly SentenceId[]) {
     const entry = state.docs.get(docKey);
     if (entry?.picks.kind !== "ready") return;
     const { cacheKey } = entry.picks;
@@ -131,7 +130,6 @@ function start() {
     state = next;
     render(action);
     if (event.type === "restore" || event.type === "recut") logClicks(event.type, event.docKey, event.ids);
-    if (event.type === "unmark") logClicks("unmark", event.docKey, [event.id]);
   }
 
   async function requestPicks(doc: Doc, check: SelectRequest["check"], requestedOn: number) {
@@ -278,7 +276,6 @@ function start() {
     },
   );
 
-  listenForMarkClick(projection.marks, ({ docKey, id }) => dispatch({ type: "unmark", docKey, id }));
 
   async function pressSite(url: string) {
     const requestedOn = pageView;

@@ -4,7 +4,6 @@ import { cacheEntry, referenceCut, withBridge } from "./lib/cut";
 import { assertMarked, marked, tintedPixels } from "./lib/marks";
 import { waitForState, withBrowser } from "./lib/check";
 import { poll, screenshot } from "./lib/pixels";
-import { collapse } from "../../src/core/segment";
 
 export default async function S17(context: CheckContext) {
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
@@ -41,14 +40,11 @@ export default async function S17(context: CheckContext) {
     assert.ok(point, "No clickable Wang mark in view");
     await page.mouse.click(point.x, point.y);
     await page.mouse.click(point.x, point.y);
-    assert.equal((await marked(page)).length, marks.length - 1);
+    await assertMarked(page, entry);
     const events = await poll(async () => (await context.bridge.events()).slice(logged),
-      (rows) => rows.some((event) => event.type === "unmark"), 5000);
-    const unmarks = events.filter((event) => event.type === "unmark");
-    assert.equal(unmarks.length, 1);
-    assert.equal(unmarks[0].cacheKey, row.cacheKey);
-    assert.equal(unmarks[0].text, collapse(point.text));
+      (rows) => rows.some((event) => event.type === "shown" && event.cacheKey === row.cacheKey), 5000);
     assert.ok(events.some((event) => event.type === "shown" && event.marks === marks.length && event.faded === ids.length));
+    assert.deepEqual(events.map(({ type }) => type).sort(), ["reveal", "shown"]);
 
     const index = (await context.bridge.requests()).length;
     await browser.open(page, "perfloop");
@@ -56,6 +52,6 @@ export default async function S17(context: CheckContext) {
     assert.equal(short.key, undefined);
     assert.equal((await waitForState(page, "idle")).faded, 0);
     assert.deepEqual(await marked(page), []);
-    return `Wang ${marks.length} yellow marks (${tinted} tinted pixels), hold clears tint, click removes one mark and logs one unmark; Perfloop stays untouched`;
+    return `Wang ${marks.length} yellow marks (${tinted} tinted pixels), hold clears tint, clicks leave every mark and log nothing; Perfloop stays untouched`;
   }));
 }

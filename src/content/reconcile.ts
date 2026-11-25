@@ -1,6 +1,5 @@
 import { markedIds, removedRuns, restoredRuns, type PageState, type RunEvent } from "../core/state";
 import { rangeOf, type AnchoredDoc, type SentenceAnchor } from "./anchor";
-import type { Mark } from "./click";
 import { createCut, firstRect } from "./cut";
 import { createMarkPainter } from "./paint";
 
@@ -26,7 +25,6 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
   let applied = "";
   let hadRuns = false;
   let markKey = "";
-  let visibleMarks: Mark[] = [];
 
   function readingPin(docs: readonly AnchoredDoc[], state: PageState): Pin | undefined {
     const topEdge = Math.min(window.innerHeight / 3, 180);
@@ -51,7 +49,6 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
   return {
     read: cut.read,
     onMutations: cut.onMutations,
-    marks: () => visibleMarks,
     reconcile(docs: readonly AnchoredDoc[], state: PageState, action?: RunAction) {
       const next = docs.map(({ doc, sentences }) => ({
         docKey: doc.key, sentences, removed: removedRuns(state, doc.key), restored: restoredRuns(state, doc.key),
@@ -82,11 +79,8 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
       const marks = JSON.stringify(ids);
       if (changed || marks !== markKey) {
         markKey = marks;
-        visibleMarks = docs.flatMap(({ doc, sentences }, i) => ids[i].flatMap((id) => {
-          const range = rangeOf(sentences[id - 1], cut.locate);
-          return range ? [{ docKey: doc.key, id, range }] : [];
-        }));
-        if (visibleMarks.length) (paintMarks ??= createMarkPainter())(visibleMarks.map(({ range }) => range));
+        const ranges = docs.flatMap(({ sentences }, i) => ids[i].flatMap((id) => rangeOf(sentences[id - 1], cut.locate) ?? []));
+        if (ranges.length) (paintMarks ??= createMarkPainter())(ranges);
         else paintMarks?.([]);
       }
       return changed && action ? cut.control(action.event) : undefined;

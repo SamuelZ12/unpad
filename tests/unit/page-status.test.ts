@@ -41,11 +41,9 @@ test("the lens stays available when every removed sentence is expanded", () => {
   expect(pageStatus(expanded, "none")).toEqual({ kind: "cut", lensOn: true, removed: 0, marks: 0 });
 });
 
-test("a marked-only article counts until the last mark is dismissed", () => {
+test("a marked-only article counts", () => {
   const ready = reduce(waiting, { ...answer, selection: { kind: "keep-all" }, key: [id(1)] });
   expect(pageStatus(ready, "none")).toEqual({ kind: "cut", lensOn: true, removed: 0, marks: 1 });
-  const unmarked = reduce(ready, { type: "unmark", docKey: doc.key, id: id(1) });
-  expect(pageStatus(unmarked, "none")).toEqual({ kind: "nothing-to-cut" });
 });
 
 test("an unscanned page is reading", () => {
