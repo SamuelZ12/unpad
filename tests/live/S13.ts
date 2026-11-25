@@ -42,7 +42,9 @@ export default async function S13(context: CheckContext) {
     await expectBadge("!");
     assert.equal(await page.locator("filler-cut-toast").count(), 0);
     await toggle(page);
-    await page.locator("filler-cut-toast").getByText("Couldn't get cuts for this page").waitFor({ timeout: 3000 });
+    const failure = page.locator("filler-cut-toast").getByRole("status");
+    await failure.getByText("Couldn't get cuts for this page").waitFor({ timeout: 3000 });
+    assert.equal(await failure.innerText(), "Couldn't get cuts for this page");
     await bridge.stop();
 
     await bridge.warmCache();

@@ -44,6 +44,7 @@ function describe(page: PageSnapshot | undefined, enabled: boolean) {
     return counts.join(" · ");
   }
   const feedback = statusFeedback(status);
+  if (status.kind === "failed") return `${feedback.title} · ${status.reason}`;
   return feedback.detail ? `${feedback.title}. ${feedback.detail}` : feedback.title;
 }
 

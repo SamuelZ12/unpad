@@ -134,6 +134,7 @@ function start() {
       if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
       if (isCurrent()) dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
     } catch (error) {
+      console.warn("Filler Cut selection failed", error);
       if (isCurrent()) dispatch({ type: "picks-failed", docKey: doc.key, reason: error instanceof Error ? error.message : "Selection failed" });
     }
   }
