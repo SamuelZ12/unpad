@@ -1,11 +1,11 @@
-import { markedIds, removedRuns, type PageState } from "../core/state";
-import type { DocKey, SentenceId } from "../shared/types";
+import { markedIds, removedRuns, restoredRuns, type PageState, type RunEvent } from "../core/state";
 import { rangeOf, type AnchoredDoc, type SentenceAnchor } from "./anchor";
 import type { Mark } from "./click";
 import { createCut, firstRect } from "./cut";
 import { createMarkPainter } from "./paint";
 
 type Pin = { sentence: SentenceAnchor; top: number };
+type RunAction = Pin & { event: RunEvent };
 
 function sameAnchors(a: AnchoredDoc, b: AnchoredDoc) {
   return a.root === b.root && a.doc.key === b.doc.key &&
@@ -19,13 +19,13 @@ function sameAnchors(a: AnchoredDoc, b: AnchoredDoc) {
     });
 }
 
-export function createProjection(expand: (docKey: DocKey, ids: readonly SentenceId[], pin: Pin) => void) {
-  const cut = createCut((docKey, ids, sentence, marker) =>
-    expand(docKey, ids, { sentence, top: marker.getBoundingClientRect().top }));
+export function createProjection(toggleRun: (action: RunAction) => void) {
+  const cut = createCut((event, sentence, control) =>
+    toggleRun({ event, sentence, top: control.getBoundingClientRect().top }));
   let paintMarks: ReturnType<typeof createMarkPainter> | undefined;
   let layout: readonly AnchoredDoc[] = [];
   let applied = "";
-  let hadCuts = false;
+  let hadRuns = false;
   let markKey = "";
   let visibleMarks: Mark[] = [];
 
@@ -53,25 +53,29 @@ export function createProjection(expand: (docKey: DocKey, ids: readonly Sentence
     read: cut.read,
     onMutations: cut.onMutations,
     marks: () => visibleMarks,
-    reconcile(docs: readonly AnchoredDoc[], state: PageState, pin?: Pin) {
-      const next = docs.map(({ doc, sentences }) => ({ docKey: doc.key, sentences, runs: removedRuns(state, doc.key) }));
-      const key = JSON.stringify(next.map(({ runs }) => runs));
+    reconcile(docs: readonly AnchoredDoc[], state: PageState, action?: RunAction) {
+      const next = docs.map(({ doc, sentences }) => ({
+        docKey: doc.key, sentences, removed: removedRuns(state, doc.key), restored: restoredRuns(state, doc.key),
+      }));
+      const key = JSON.stringify(next.map(({ removed, restored }) => [removed, restored]));
       const same = docs.length === layout.length && docs.every((doc, i) => sameAnchors(doc, layout[i]));
       const changed = !same || key !== applied || cut.dirty;
       if (changed) {
-        const hasCuts = next.some(({ runs }) => runs.length > 0);
-        if (hadCuts || hasCuts) {
-          pin ??= readingPin(docs, state);
-        }
+        const hasRuns = next.some(({ removed, restored }) => removed.length || restored.length);
+        const pin = action?.event.type === "restore" ? action
+          : (hadRuns || hasRuns ? readingPin(docs, state) : undefined) ?? action;
         cut.clear();
         cut.apply(next);
+        const control = action && cut.control(action.event);
         if (pin) {
-          const rect = firstRect(pin.sentence, cut.locate);
+          const rect = firstRect(pin.sentence, cut.locate) ??
+            (pin === action ? control?.getBoundingClientRect() : undefined);
           if (rect?.width) window.scrollTo({ top: Math.round(window.scrollY + rect.top - pin.top), behavior: "instant" });
         }
+        control?.focus({ preventScroll: true });
         layout = docs;
         applied = key;
-        hadCuts = hasCuts;
+        hadRuns = hasRuns;
       }
 
       const ids = docs.map(({ doc }) => markedIds(state, doc.key));
