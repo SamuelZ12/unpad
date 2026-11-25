@@ -11,7 +11,7 @@ const outdir = "dist/extension";
 await mkdir(outdir, { recursive: true });
 
 await Bun.build({
-  entrypoints: ["src/content/main.ts", "src/content/page.ts", "src/background/sw.ts"],
+  entrypoints: ["src/content/main.ts", "src/content/page.ts", "src/background/sw.ts", "src/popup/popup.ts"],
   outdir,
   naming: "[name].js",
   target: "browser",
@@ -31,6 +31,10 @@ for (const file of await readdir(outdir)) {
   if (/^sw-[0-9a-f]{8}\.js$/.test(file)) await rm(`${outdir}/${file}`);
 }
 await rename(`${outdir}/sw.js`, `${outdir}/${worker}`);
+
+for (const asset of ["popup.html", "popup.css"]) {
+  await Bun.write(`${outdir}/${asset}`, Bun.file(`src/popup/${asset}`));
+}
 
 await Bun.write(`${outdir}/manifest.json`, JSON.stringify({
   ...manifest,

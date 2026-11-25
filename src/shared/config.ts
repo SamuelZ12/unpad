@@ -1,5 +1,7 @@
 export const BRIDGE_URL = process.env.BRIDGE_URL ?? "http://127.0.0.1:18931";
 
+export const TOGGLE_COMMAND = "toggle-lens";
+
 export const MIN_SENTENCES = 6;
 // Measured Nov 24 2026: Pi's keep call took 8.6 s for 789 sentences, 14.2 s for 1,370 and 17.1 s for 2,008, against its 20 s timeout.
 export const MAX_SENTENCES = 1500;

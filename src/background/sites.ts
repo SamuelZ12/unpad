@@ -1,7 +1,7 @@
-const actionCommand = "_execute_action";
+import { TOGGLE_COMMAND } from "../shared/config";
 
 export async function ownsShortcut() {
-  return (await chrome.commands.getAll()).some(({ name, shortcut }) => name === actionCommand && !!shortcut);
+  return (await chrome.commands.getAll()).some(({ name, shortcut }) => name === TOGGLE_COMMAND && !!shortcut);
 }
 
 async function registerSite(match: string) {
@@ -17,10 +17,13 @@ async function registerSite(match: string) {
   }
 }
 
-async function grantedSites() {
-  const { origins = [] } = await new Promise<chrome.permissions.Permissions>((resolve) => chrome.permissions.getAll(resolve));
-  // Only exact scheme, host, and port grants enable generic extraction.
+export function optionalSiteMatches(origins: string[] = []) {
   return origins.filter((origin) => /^https?:\/\/(?:\[[^\]]+\]|[^*:]+):\d+\/\*$/.test(origin));
+}
+
+export async function grantedSites() {
+  const { origins } = await chrome.permissions.getAll();
+  return optionalSiteMatches(origins);
 }
 
 export async function restoreSites() {
@@ -35,16 +38,21 @@ export async function forgetSites() {
   await chrome.permissions.remove({ origins: sites });
 }
 
-export function siteMatch({ protocol, hostname, port }: URL) {
+export function siteMatch({ protocol, hostname, port, pathname }: URL) {
   if (protocol !== "https:" && protocol !== "http:") return;
+  if (hostname === "chromewebstore.google.com" ||
+    (hostname === "chrome.google.com" && pathname.startsWith("/webstore"))) return;
   if (hostname.includes("*")) return;
   // Chrome match patterns without a port also cover other ports on the host.
   return `${protocol}//${hostname}:${port || (protocol === "https:" ? 443 : 80)}/*`;
 }
 
-function builtinSite(url: URL) {
-  const pattern = `${url.protocol}//${url.hostname}/*`;
-  return chrome.runtime.getManifest().content_scripts?.some(({ matches }) => matches?.includes(pattern)) ?? false;
+export function builtinSites() {
+  return chrome.runtime.getManifest().content_scripts?.flatMap(({ matches }) => matches ?? []) ?? [];
+}
+
+export function builtinSite(url: URL) {
+  return builtinSites().includes(`${url.protocol}//${url.hostname}/*`);
 }
 
 export async function siteEnabled(url: string | undefined) {
@@ -61,6 +69,10 @@ async function inspectDocument(tabId: number) {
   return document;
 }
 
+export async function documentUrl(tabId: number) {
+  return (await inspectDocument(tabId).catch(() => undefined))?.result;
+}
+
 async function injectDocument(tabId: number, url: string, file: string) {
   // Bind injection to the document inspected by the action, even if the tab navigates.
   const document = await inspectDocument(tabId);
@@ -71,8 +83,11 @@ async function injectDocument(tabId: number, url: string, file: string) {
   }
 }
 
-export async function activateDocument({ id: tabId, url }: chrome.tabs.Tab, setLens: SetLens) {
-  if (tabId === undefined || !url || !siteMatch(new URL(url))) return;
+export async function activateDocument(tab: Pick<chrome.tabs.Tab, "id" | "url">, setLens: SetLens) {
+  const tabId = tab.id;
+  if (tabId === undefined) return;
+  const url = tab.url ?? await documentUrl(tabId);
+  if (!url || !siteMatch(new URL(url))) return;
   if (!await siteEnabled(url)) return injectDocument(tabId, url, "page.js");
   const press = () => chrome.tabs.sendMessage(tabId, { type: "site-press", url }, { frameId: 0 })
     .catch(() => undefined);
@@ -84,48 +99,29 @@ export async function activateDocument({ id: tabId, url }: chrome.tabs.Tab, setL
   if (shouldToggle === true) await setLens();
 }
 
-export async function setSite({ id: tabId, url }: chrome.tabs.Tab, checked: boolean, setLens: SetLens) {
-  if (tabId === undefined || !url) return;
-  const pageUrl = new URL(url);
-  const match = siteMatch(pageUrl);
-  if (!match || builtinSite(pageUrl)) return;
-  const permission = { origins: [match] };
-  if (checked) {
-    // Request access in the menu click's gesture, before awaiting any Chrome API.
-    if (!await chrome.permissions.request(permission)) return;
-    await registerSite(match);
-    await setLens(true);
-    await injectDocument(tabId, pageUrl.href, "main.js");
-  } else {
-    const filter = { ids: [match] };
-    if ((await chrome.scripting.getRegisteredContentScripts(filter)).length) {
-      await chrome.scripting.unregisterContentScripts(filter);
-    }
-    const tabs = await chrome.tabs.query({});
-    await chrome.permissions.remove(permission);
-    await Promise.all(tabs.filter(({ url }) => !url || new URL(url).origin === pageUrl.origin)
-      .map(({ id }) => id === undefined ? undefined :
-        chrome.tabs.sendMessage(id, { type: "site-removed", origin: pageUrl.origin }, { frameId: 0 }).catch(() => {})));
-  }
+export async function addSites(matches: string[], setLens: SetLens) {
+  if (!matches.length) return;
+  const grants = await grantedSites();
+  const enabled = matches.filter((match) => grants.includes(match));
+  if (!enabled.length) return;
+  await Promise.all(enabled.map(registerSite));
+  await setLens(true);
+  const tabs = await chrome.tabs.query({ url: enabled });
+  await Promise.allSettled(tabs.flatMap(({ id, url }) => id !== undefined && url && enabled.includes(siteMatch(new URL(url)) ?? "")
+    ? [injectDocument(id, url, "main.js")] : []));
 }
 
-export const siteMenuId = "always-run";
-let menuUpdate = 0;
+export async function deactivateSites(matches: string[]) {
+  if (!matches.length) return;
+  const granted = await grantedSites();
+  const revoked = matches.filter((match) => !granted.includes(match));
+  if (!revoked.length) return;
+  const ids = (await chrome.scripting.getRegisteredContentScripts({ ids: revoked })).map(({ id }) => id);
+  if (ids.length) await chrome.scripting.unregisterContentScripts({ ids });
 
-export async function syncSiteMenu() {
-  const update = ++menuUpdate;
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  // Content-script matches can provide access to the document without exposing Tab.url.
-  const tabId = tab?.id;
-  let url = tab?.url;
-  if (!url && tabId !== undefined) {
-    url = await chrome.tabs.sendMessage(tabId, { type: "site-url" }, { frameId: 0 }).catch(() => undefined);
-    if (!url && (await grantedSites()).length) {
-      url = (await inspectDocument(tabId).catch(() => undefined))?.result;
-    }
-  }
-  const pageUrl = url && URL.parse(url);
-  const builtin = !!pageUrl && builtinSite(pageUrl);
-  const checked = builtin || await siteEnabled(url);
-  if (update === menuUpdate) await chrome.contextMenus.update(siteMenuId, { checked, enabled: !builtin });
+  const origins = new Set(revoked.map((match) => new URL(match).origin));
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs.flatMap(({ id, url }) => id !== undefined && (!url || origins.has(new URL(url).origin))
+    ? [...origins].map((origin) =>
+      chrome.tabs.sendMessage(id, { type: "site-removed", origin }, { frameId: 0 }).catch(() => {})) : []));
 }
