@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { Page, Worker } from "playwright";
 import type { CheckContext } from "./run";
-import { addFromPopup, extensionWorker, withActionBrowser } from "./lib/action";
+import { addFromPopup, extensionWorker, reloadExtension, withActionBrowser } from "./lib/action";
 import { registrations } from "./lib/sites";
 import { launch, urls, xHomeUrl } from "./lib/browser";
 import { toggle, waitForState } from "./lib/check";
@@ -134,7 +134,22 @@ export default async function S20(context: CheckContext) {
         marked ? `${marked} key point${marked === 1 ? "" : "s"}` : "",
       ].filter(Boolean).join(" · ");
       await action.withPopup(page, (popup) => captures(popup, context.evidence + "/cut", expected));
+
+      // A reload orphans the open tab's script. The switch starts a new one instead of flipping the shared lens.
+      await action.press(page);
+      await waitForState(page, "picks-ready");
+      await reloadExtension(tabs);
+      await action.withPopup(page, async (popup) => {
+        await popup.evaluate(() => chrome.storage.local.set({ lensOn: true }));
+        await popup.getByText("Use the switch to start Filler Cut here.").waitFor({ timeout: 5000 });
+        const lens = popup.getByRole("switch");
+        assert.equal(await lens.getAttribute("aria-checked"), "false");
+        await lens.click();
+        await popup.waitForFunction(() => document.querySelector<HTMLButtonElement>("#lens")?.disabled === false);
+        await popup.locator("#lens[aria-checked=true]").waitFor({ timeout: 5000 });
+      });
+      assert.equal((await waitForState(page, "faded", 5000)).faded, faded);
     }, "replay");
-    return "X home page-key fallback and popup switch show the post hint, short post shows the plain toast, lens unchanged and zero selects; one-shot blank page ends; popup checkbox adds and removes a routed site; four native popup states captured in light and dark";
+    return "X home page-key fallback and popup switch show the post hint, short post shows the plain toast, lens unchanged and zero selects; one-shot blank page ends; popup checkbox adds and removes a routed site; four native popup states captured in light and dark; after an extension reload the switch restarts the open tab with the lens on";
   });
 }
