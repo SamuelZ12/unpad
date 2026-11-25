@@ -35,7 +35,7 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S12-page-mode](S12-page-mode.ts) | The popup switch cuts the Anthropic article in page mode with the shared lens off. A focused editor blocks activation. Lens off restores its prose HTML apart from IDs Anthropic regenerates during hydration. A section link retains the cut and a new hash route or reload ends page mode. |
 | [S12-added-site](S12-added-site.ts) | Adding Anthropic cuts the open page and its reload. Removing access restores the original and clears the grant, script registration, and badge. The popup checkbox follows the active site and removal works from the Runs on list in another tab. |
 | [S12-page-check](S12-page-check.ts) | Added GitHub skips the Firecrawl README and caches the verdict. The GitHub profile sends zero selection requests. Added Anthropic still cuts the checked article. |
-| [S13](S13.ts) | The badge reports pending picks, the removed sentence count, a lower count after expansion, a failure, and an empty count for an untouched page. A press after failure shows a toast. |
+| [S13](S13.ts) | The badge reports pending picks, the removed sentence count, a lower count after expansion, a failure, and an empty count for an untouched page. A press after failure shows a toast. A press while picks are pending turns the lens on once they arrive. |
 | [S14](S14.ts) | The lens and Shift keys leave typing in Warp's newsletter field alone. |
 | [S15](S15.ts) | A kept Warp link follows its normal destination without expanding a run or removing a mark. |
 | [S16](S16.ts) | Warp cuts from cache within 1 s of its text entering the DOM. |

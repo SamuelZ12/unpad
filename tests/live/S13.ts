@@ -65,6 +65,15 @@ export default async function S13(context: CheckContext) {
     assert.equal(await badge(blankId), "");
     await page.goto("about:blank#after-wang");
     await expectBadge("");
-    return `waiting "…", failed "!", cut "${faded.faded}", after expansion and lens off "${reduced}", untouched "" in both tabs`;
+
+    // A press while picks are pending waits for them, then turns the lens on.
+    await worker.evaluate(() => chrome.storage.local.set({ lensOn: false }));
+    await bridge.clear();
+    await browser.open(page, "wang");
+    await waitForState(page, "waiting");
+    await toggle(page);
+    const pressed = await waitForState(page, "faded");
+    assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
+    return `waiting "…", failed "!", cut "${faded.faded}", after expansion and lens off "${reduced}", untouched "" in both tabs; a press during a cold selection turned the lens on and cut ${pressed.faded}`;
   }).finally(() => bridge.stop());
 }
