@@ -1,9 +1,10 @@
-import { BRIDGE_URL } from "../shared/config";
+import { BRIDGE_URL, TOGGLE_COMMAND } from "../shared/config";
 import { sha256 } from "../shared/keys";
+import type { PageSnapshot } from "../shared/page-snapshot";
 import { parseErrorResponse, parseEventsRequest, parseSelectRequest, parseSelectResponse } from "../shared/wire";
 
 import { chromeEventQueue } from "./events";
-import { activateDocument, forgetSites, ownsShortcut, restoreSites, setSite, siteEnabled, siteMenuId, syncSiteMenu } from "./sites";
+import { activateDocument, addSites, deactivateSites, forgetSites, optionalSiteMatches, ownsShortcut, restoreSites, siteEnabled } from "./sites";
 
 export async function selectDoc(body: unknown, fetcher: (input: URL, init: RequestInit) => Promise<Response> = fetch) {
   const request = parseSelectRequest(body);
@@ -29,7 +30,6 @@ export async function selectDoc(body: unknown, fetcher: (input: URL, init: Reque
 
 if (typeof chrome !== "undefined") {
   let toggles = Promise.resolve();
-  const testSiteMenu: { next?: boolean; result?: Promise<void> } = {};
   function setLens(on?: boolean) {
     const write = toggles.then(async () => {
       const { lensOn } = await chrome.storage.local.get("lensOn");
@@ -38,63 +38,53 @@ if (typeof chrome !== "undefined") {
     toggles = write.catch(console.warn);
     return write;
   }
-  chrome.action.onClicked.addListener((tab) => {
-    if (process.env.FILLER_CUT_DEV === "1" && testSiteMenu.next !== undefined) {
-      const checked = testSiteMenu.next;
-      delete testSiteMenu.next;
-      // CDP can trigger the action's user gesture but cannot click the native menu.
-      testSiteMenu.result = onSiteMenuClick({ menuItemId: siteMenuId, checked }, tab);
-      void testSiteMenu.result.catch(console.warn);
-      return;
-    }
-    void activateDocument(tab, setLens).catch(console.warn);
-  });
-  function refreshMenu() {
-    void syncSiteMenu().catch(console.warn);
+  let siteChanges = Promise.resolve();
+  function changeSites(change: () => Promise<void>) {
+    const work = siteChanges.then(change);
+    siteChanges = work.catch(console.warn);
+    return work;
   }
-  async function onSiteMenuClick(info: Pick<chrome.contextMenus.OnClickData, "menuItemId" | "checked" | "pageUrl">, tab?: chrome.tabs.Tab) {
-    if (info.menuItemId !== siteMenuId || !tab || info.checked === undefined) return;
-    try {
-      await setSite({ ...tab, url: tab.url ?? info.pageUrl }, info.checked, setLens);
-    } finally {
-      await syncSiteMenu();
-    }
-  }
-  chrome.contextMenus.onClicked.addListener((info, tab) => {
-    void onSiteMenuClick(info, tab).catch(console.warn);
+
+  chrome.commands.onCommand.addListener((name, tab) => {
+    if (name === TOGGLE_COMMAND && tab) void activateDocument(tab, setLens).catch(console.warn);
   });
-  if (process.env.FILLER_CUT_DEV === "1") Object.assign(globalThis, { testSiteMenu });
-  chrome.tabs.onActivated.addListener(refreshMenu);
-  chrome.tabs.onUpdated.addListener((_id, change, tab) => { if (tab.active && (change.url || change.status)) refreshMenu(); });
-  chrome.windows.onFocusChanged.addListener(refreshMenu);
-  chrome.permissions.onAdded.addListener(refreshMenu);
-  chrome.permissions.onRemoved.addListener(refreshMenu);
+  chrome.permissions.onAdded.addListener(({ origins }) => {
+    void changeSites(() => addSites(optionalSiteMatches(origins), setLens));
+  });
+  chrome.permissions.onRemoved.addListener(({ origins }) => {
+    void changeSites(() => deactivateSites(optionalSiteMatches(origins)));
+  });
   chrome.runtime.onInstalled.addListener(({ reason, previousVersion }) => {
-    // Both old releases could enable a site from the action. Ask for menu opt-in again.
     const legacy = previousVersion === "0.0.2" || previousVersion === "0.0.3";
-    const sites = reason === "update" && legacy ? forgetSites() : restoreSites();
-    void sites.catch(console.warn);
-    chrome.contextMenus.create({
-      id: siteMenuId, title: "Always run on this site", type: "checkbox", contexts: ["action"],
-      documentUrlPatterns: ["https://*/*", "http://*/*"],
-    }, () => {
-      if (chrome.runtime.lastError) console.warn(chrome.runtime.lastError.message);
-      refreshMenu();
-    });
+    void changeSites(reason === "update" && legacy ? forgetSites : restoreSites);
   });
-  chrome.runtime.onStartup.addListener(() => { void restoreSites().then(refreshMenu).catch(console.warn); });
+  chrome.runtime.onStartup.addListener(() => { void changeSites(restoreSites); });
   const queueEvents = chromeEventQueue();
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message?.type === "hash" && typeof message.data === "string") {
       void sha256(message.data).then(reply);
       return true;
     }
+    if (sender.url === chrome.runtime.getURL("popup.html")) {
+      if (message?.type === "popup-press" && Number.isInteger(message.tabId) && typeof message.url === "string") {
+        void activateDocument({ id: message.tabId, url: message.url }, setLens).then(() => reply(true), () => reply(false));
+        return true;
+      }
+      if (message?.type === "remove-site" && typeof message.match === "string" && optionalSiteMatches([message.match]).length) {
+        const match: string = message.match;
+        void changeSites(async () => {
+          await chrome.permissions.remove({ origins: [match] });
+          await deactivateSites([match]);
+        }).then(() => reply(true), () => reply(false));
+        return true;
+      }
+    }
     if (message?.type === "page-status-changed") {
       const tabId = sender.tab?.id;
       if (tabId === undefined || sender.frameId !== 0) return;
-      const { mode, status } = message.page;
+      const { mode, status } = message.page as PageSnapshot;
       let text = "";
-      if (mode && !message.revealed) {
+      if (mode && status && !message.revealed) {
         if (status.kind === "reading") text = "…";
         if (status.kind === "failed") text = "!";
         if (status.kind === "cut" && status.removed && (mode === "site" || status.lensOn)) text = String(status.removed);

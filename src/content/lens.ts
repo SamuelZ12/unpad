@@ -1,7 +1,8 @@
-import { pageStatus, type NoContentHint } from "../core/page-status";
+import { pageStatus, type NoContentHint, type PageStatus } from "../core/page-status";
 import { fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
 import type { Doc, DocKey, SentenceId } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
+import type { PageSnapshot } from "../shared/page-snapshot";
 import { statusFeedback } from "../shared/status-copy";
 import { MIN_MARK_SENTENCES } from "../shared/config";
 import { extract, type AnchoredDoc } from "./anchor";
@@ -31,6 +32,7 @@ function start() {
   let anchoredDocs: AnchoredDoc[] = [];
   let hint: NoContentHint = "none";
   let scanError: string | undefined;
+  let lastAttempt: PageStatus | undefined;
   let scanning: Promise<void> | undefined;
   let pressedWhileReading = false;
   let lastStatus: string | undefined;
@@ -46,9 +48,12 @@ function start() {
     };
   }
 
-  function snapshot() {
-    const status = scanError ? { kind: "failed" as const, reason: scanError } : pageStatus(visibleState(), hint);
-    return { mode, status };
+  function currentStatus(): PageStatus {
+    return scanError ? { kind: "failed", reason: scanError } : pageStatus(visibleState(), hint);
+  }
+
+  function snapshot(): PageSnapshot {
+    return { url: href, mode, lensOn: state.lensOn, status: mode ? currentStatus() : lastAttempt };
   }
 
   type Pin = Parameters<typeof projection.reconcile>[2];
@@ -86,11 +91,11 @@ function start() {
   }
 
   function feedback() {
-    const { status } = snapshot();
+    const status = currentStatus();
     const message = statusFeedback(status);
     if (!message) return false;
     pressedWhileReading = status.kind === "reading";
-    if (mode === "page" && !pressedWhileReading) stop();
+    if (mode === "page" && !pressedWhileReading) stop(status);
     toast(message);
     return true;
   }
@@ -110,7 +115,7 @@ function start() {
     state = next;
     render(pin);
     if (pressedWhileReading && (event.type === "picks-arrived" || event.type === "picks-failed") &&
-      snapshot().status.kind !== "reading") {
+      currentStatus().kind !== "reading") {
       pressedWhileReading = false;
       if (!feedback()) toast();
     }
@@ -179,13 +184,14 @@ function start() {
     while (scanning) await scanning;
   }
 
-  function reset() {
+  function reset(attempt?: PageStatus) {
     href = location.href;
     pageView++;
     scanVersion++;
     anchoredDocs = [];
     hint = "none";
     scanError = undefined;
+    lastAttempt = attempt;
     scanning = undefined;
     pressedWhileReading = false;
     toast();
@@ -194,10 +200,10 @@ function start() {
     dispatch({ type: "navigated" });
   }
 
-  function stop() {
+  function stop(attempt?: PageStatus) {
     mode = undefined;
     state = { ...state, lensOn: false };
-    reset();
+    reset(attempt);
   }
 
   function navigate() {
@@ -209,7 +215,7 @@ function start() {
         (!anchor || !!document.getElementById(anchor) || document.getElementsByName(anchor).length > 0);
       if (sameDocument) href = location.href;
       else stop();
-    } else if (mode === "site") reset();
+    } else reset();
     void scan();
   }
 
@@ -221,8 +227,10 @@ function start() {
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, reply) => {
-    if (message?.type === "site-url" && mode === "site") reply(location.href);
-    if (message?.type === "page-status") reply(snapshot());
+    if (message?.type === "page-status") {
+      navigate();
+      reply(snapshot());
+    }
     if (message?.type === "site-press") {
       if (mode !== "site") return;
       void pressSite(message.url).then(reply, () => reply(false));
@@ -254,7 +262,7 @@ function start() {
     navigate();
     const requestedOn = pageView;
     if (href.split("#", 1)[0] !== url.split("#", 1)[0] || hasFocusedEditor()) return false;
-    if (snapshot().status.kind === "no-content" && !scanning) void scan();
+    if (currentStatus().kind === "no-content" && !scanning) void scan();
     await finishScan();
     if (mode !== "site" || pageView !== requestedOn || href !== location.href || hasFocusedEditor()) return false;
     return !feedback();
@@ -290,6 +298,7 @@ function start() {
     if (next === "page") {
       if (mode === "site") return;
       mode = "page";
+      lastAttempt = undefined;
       void pressPage();
     } else if (mode !== "site") {
       mode = "site";

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Filler Cut</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="popup.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Filler Cut</h1>
+    <button id="lens" class="switch" type="button" role="switch" aria-checked="false" aria-label="Filler Cut on this page" aria-describedby="status" hidden></button>
+  </header>
+  <p id="status" role="status">Reading…</p>
+  <p id="error" role="status" hidden></p>
+  <label id="site-setting" hidden>
+    <input id="always" type="checkbox">
+    <span id="site-label"></span>
+    <span id="site-builtin" class="muted" hidden>built in</span>
+  </label>
+  <section aria-labelledby="sites-heading">
+    <h2 id="sites-heading">Runs on</h2>
+    <ul id="sites"></ul>
+  </section>
+  <footer>
+    <kbd id="shortcut" hidden></kbd>
+    <a id="change" href="chrome://extensions/shortcuts">Set a shortcut</a>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,134 @@
+:root {
+  color-scheme: light dark;
+  font: 13px/1.45 system-ui, sans-serif;
+  --ink: light-dark(#242423, #f3f2ef);
+  --quiet: light-dark(#64635f, #aaa9a3);
+  --rule: light-dark(#e8e7e3, #3b3b39);
+  --accent: rgba(255, 214, 10, .82);
+  background: light-dark(#fcfcfb, #232322);
+  color: var(--ink);
+}
+
+[hidden] { display: none !important; }
+
+body {
+  box-sizing: border-box;
+  width: 312px;
+  margin: 0;
+  padding: 16px 18px 13px;
+}
+
+header, footer, #site-setting, li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+header, li { justify-content: space-between; }
+
+h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -.2px;
+}
+
+.switch {
+  display: grid;
+  place-items: center start;
+  box-sizing: border-box;
+  width: 35px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid light-dark(#adaca7, #777671);
+  border-radius: 20px;
+  background: transparent;
+}
+
+.switch::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--quiet);
+}
+
+.switch[aria-checked="true"] {
+  justify-items: end;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.switch[aria-checked="true"]::after { background: #292719; }
+
+p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+#status, .muted, h2, footer { color: var(--quiet); }
+
+#site-setting {
+  margin-top: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#site-setting .muted { white-space: nowrap; }
+
+input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+section, footer {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--rule);
+}
+
+h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+li {
+  min-height: 25px;
+  overflow-wrap: anywhere;
+}
+
+footer { font-size: 12px; }
+
+kbd {
+  background: light-dark(#efeeeb, #333330);
+  color: var(--ink);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font: inherit;
+}
+
+button, a, input, label { cursor: pointer; }
+button:disabled, input:disabled { cursor: default; }
+
+.remove, a {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--quiet);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
