@@ -25,8 +25,6 @@ const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
 
 function xStatus(document: Document, path: string): SurfaceDoc[] {
-  const match = path.match(/^\/[\w]+\/status\/(\d+)\/?$/);
-  if (!match) return [];
   const status = path.replace(/\/$/, "").toLowerCase();
   const tweet = [...document.querySelectorAll(
     "article[data-testid=tweet], main article",
@@ -115,10 +113,13 @@ function genericArticle(document: Document, checkArticle: boolean, read: ReadTex
   return [{ root, title, blocks, surface: "blog", generic: true }];
 }
 
-export function surfaces(document: Document, url: URL, checkArticle: boolean, read: ReadText): SurfaceDoc[] {
-  if (url.hostname === "x.com") return xStatus(document, url.pathname);
-  if (url.hostname === "claude.com") return blog(document, url.pathname);
-  return genericArticle(document, checkArticle, read);
+export function surfaces(document: Document, url: URL, checkArticle: boolean, read: ReadText) {
+  if (url.hostname === "x.com") {
+    if (!/^\/\w+\/status\/\d+\/?$/.test(url.pathname)) return { kind: "x-other-route" } as const;
+    return { kind: "surface", docs: xStatus(document, url.pathname) } as const;
+  }
+  const docs = url.hostname === "claude.com" ? blog(document, url.pathname) : genericArticle(document, checkArticle, read);
+  return { kind: "surface", docs } as const;
 }
 
 export function usesGenericSurface(url: URL) {

@@ -1,6 +1,8 @@
-import { candidates, fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
+import { pageStatus, type NoContentHint } from "../core/page-status";
+import { fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
 import type { Doc, DocKey, SentenceId } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
+import { statusFeedback } from "../shared/status-copy";
 import { MIN_MARK_SENTENCES } from "../shared/config";
 import { extract, type AnchoredDoc } from "./anchor";
 import { listenForMarkClick } from "./click";
@@ -9,6 +11,7 @@ import { listenForHold } from "./hold";
 import { hasFocusedEditor, listenForToggle } from "./keys";
 import { observePage } from "./observe";
 import { createProjection } from "./reconcile";
+import { createToast } from "./toast";
 import { usesGenericSurface } from "./surfaces";
 
 type Mode = "site" | "page";
@@ -26,12 +29,26 @@ function start() {
 
   let state: PageState = { lensOn: false, holding: false, docs: new Map() };
   let anchoredDocs: AnchoredDoc[] = [];
-  let lastBadge: string | undefined;
+  let hint: NoContentHint = "none";
+  let scanError: string | undefined;
+  let scanning: Promise<void> | undefined;
+  let pressedWhileReading = false;
+  let lastStatus: string | undefined;
+  const toast = createToast();
 
-  function currentView() {
-    if (anchoredDocs.length === state.docs.size) return view(state);
-    const visible = new Set(anchoredDocs.map(({ doc }) => doc.key));
-    return view({ ...state, docs: new Map([...state.docs].filter(([key]) => visible.has(key))) });
+  function visibleState() {
+    return {
+      ...state,
+      docs: new Map(anchoredDocs.flatMap(({ doc }) => {
+        const entry = state.docs.get(doc.key);
+        return entry ? [[doc.key, entry]] : [];
+      })),
+    };
+  }
+
+  function snapshot() {
+    const status = scanError ? { kind: "failed" as const, reason: scanError } : pageStatus(visibleState(), hint);
+    return { mode, status };
   }
 
   type Pin = Parameters<typeof projection.reconcile>[2];
@@ -39,21 +56,16 @@ function start() {
   function render(pin?: Pin) {
     mutate(() => projection.reconcile(anchoredDocs, state, pin));
     const html = document.documentElement;
-    const current = currentView();
+    const current = view(visibleState());
     html.dataset.fillerCutState = current;
     let fadedTotal = 0;
     let markedTotal = 0;
-    let readyTotal = 0;
-    let failed = false;
     for (const { doc } of anchoredDocs) {
       const faded = fadedIds(state, doc.key).length;
       const marks = markedIds(state, doc.key).length;
       fadedTotal += faded;
       markedTotal += marks;
-      const entry = state.docs.get(doc.key);
-      const picks = entry?.picks;
-      if (entry && current === "picks-ready") readyTotal += candidates(entry).length;
-      failed ||= picks?.kind === "failed";
+      const picks = state.docs.get(doc.key)?.picks;
       if ((!faded && !marks) || picks?.kind !== "ready" || shown.has(doc.key)) continue;
       shown.add(doc.key);
       void log({
@@ -63,16 +75,24 @@ function start() {
     }
     html.dataset.fillerCutFaded = String(fadedTotal);
     html.dataset.fillerCutMarked = String(markedTotal);
-    let badge = "";
-    if (current === "waiting") badge = "…";
-    else if (current === "faded" && fadedTotal) badge = String(fadedTotal);
-    else if (current === "picks-ready" && readyTotal) badge = String(readyTotal);
-    else if (failed) badge = "!";
-    if (mode === "page" && !state.lensOn) badge = "";
-    if (badge !== lastBadge) {
-      lastBadge = badge;
-      void chrome.runtime.sendMessage({ type: "badge", text: badge }).catch(console.warn);
+    const page = snapshot();
+    const signature = JSON.stringify([page, current]);
+    if (signature !== lastStatus) {
+      lastStatus = signature;
+      void chrome.runtime.sendMessage({
+        type: "page-status-changed", page, revealed: current === "revealed",
+      }).catch(console.warn);
     }
+  }
+
+  function feedback() {
+    const { status } = snapshot();
+    const message = statusFeedback(status);
+    if (!message) return false;
+    pressedWhileReading = status.kind === "reading";
+    if (mode === "page" && !pressedWhileReading) stop();
+    toast(message);
+    return true;
   }
 
   function logClicks(type: "restore" | "unmark", docKey: DocKey, ids: readonly SentenceId[]) {
@@ -89,6 +109,11 @@ function start() {
     if (next === state) return;
     state = next;
     render(pin);
+    if (pressedWhileReading && (event.type === "picks-arrived" || event.type === "picks-failed") &&
+      snapshot().status.kind !== "reading") {
+      pressedWhileReading = false;
+      if (!feedback()) toast();
+    }
     if (event.type === "restore") logClicks("restore", event.docKey, event.ids);
     if (event.type === "unmark") logClicks("unmark", event.docKey, [event.id]);
   }
@@ -105,20 +130,36 @@ function start() {
       if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
       if (isCurrent()) dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
     } catch (error) {
-      if (isCurrent()) dispatch({ type: "picks-failed", docKey: doc.key, reason: String(error) });
+      if (isCurrent()) dispatch({ type: "picks-failed", docKey: doc.key, reason: error instanceof Error ? error.message : "Selection failed" });
     }
   }
 
-  async function scan() {
+  function scan() {
     if (!mode || (mode === "page" && !state.lensOn)) return;
-    const start = performance.now();
     const version = ++scanVersion;
+    // An earlier scan must never replace the status of a newer document or mutation.
+    const current = () => version === scanVersion && href === location.href;
+    const task = scanDocument(current).catch((error) => {
+      if (!current()) return;
+      scanError = "The page couldn't be read.";
+      render();
+      console.warn(error);
+    });
+    scanning = task;
+    void task.then(() => { if (scanning === task) scanning = undefined; });
+    return task;
+  }
+
+  async function scanDocument(current: () => boolean) {
+    const start = performance.now();
     const url = new URL(href);
     const check = mode === "site" && usesGenericSurface(url) ? { url: url.origin + url.pathname } : undefined;
-    const docs = await extract(document, url, !!check, projection.read);
-    if (version !== scanVersion || href !== location.href || (mode === "page" && !state.lensOn)) return;
+    const result = await extract(document, url, !!check, projection.read);
+    if (!current()) return;
 
-    anchoredDocs = docs.filter(({ root }) => root.isConnected);
+    scanError = undefined;
+    hint = result.hint;
+    anchoredDocs = result.docs.filter(({ root }) => root.isConnected);
 
     if (process.env.FILLER_CUT_DEV === "1") {
       document.documentElement.dataset.fillerCutDebug = JSON.stringify({
@@ -134,11 +175,20 @@ function start() {
     render();
   }
 
+  async function finishScan() {
+    while (scanning) await scanning;
+  }
+
   function reset() {
     href = location.href;
     pageView++;
     scanVersion++;
     anchoredDocs = [];
+    hint = "none";
+    scanError = undefined;
+    scanning = undefined;
+    pressedWhileReading = false;
+    toast();
     shown.clear();
     log = createLog(href);
     dispatch({ type: "navigated" });
@@ -171,8 +221,13 @@ function start() {
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, reply) => {
-    if (message?.type === "editor-status") reply({ editing: hasFocusedEditor(), site: mode === "site" });
     if (message?.type === "site-url" && mode === "site") reply(location.href);
+    if (message?.type === "page-status") reply(snapshot());
+    if (message?.type === "site-press") {
+      if (mode !== "site") return;
+      void pressSite(message.url).then(reply, () => reply(false));
+      return true;
+    }
     if (message?.type === "site-removed" && mode === "site" && message.origin === location.origin) {
       stop();
       reply(true);
@@ -180,20 +235,14 @@ function start() {
   });
 
   listenForToggle(() => {
-    const currentMode = mode;
-    const requestedOn = pageView;
-    if (!currentMode) return false;
-    void chrome.runtime.sendMessage({ type: "toggle", mode: currentMode }).then((allowed) => {
-      if (allowed && mode === "page" && currentMode === "page" && pageView === requestedOn && href === location.href) {
-        togglePage();
-      }
-    }).catch(console.warn);
+    if (!mode) return false;
+    void chrome.runtime.sendMessage({ type: "page-key" }).catch(console.warn);
   });
 
   listenForHold(
     () => dispatch({ type: "hold-start" }),
     (heldMs) => {
-      const revealed = currentView() === "revealed";
+      const revealed = view(visibleState()) === "revealed";
       dispatch({ type: "hold-end" });
       if (revealed) void log({ type: "reveal", heldMs }).catch(console.warn);
     },
@@ -201,10 +250,27 @@ function start() {
 
   listenForMarkClick(projection.marks, ({ docKey, id }) => dispatch({ type: "unmark", docKey, id }));
 
-  function togglePage() {
+  async function pressSite(url: string) {
+    navigate();
+    const requestedOn = pageView;
+    if (href.split("#", 1)[0] !== url.split("#", 1)[0] || hasFocusedEditor()) return false;
+    if (snapshot().status.kind === "no-content" && !scanning) void scan();
+    await finishScan();
+    if (mode !== "site" || pageView !== requestedOn || href !== location.href || hasFocusedEditor()) return false;
+    return !feedback();
+  }
+
+  async function pressPage() {
     if (hasFocusedEditor()) return;
-    dispatch({ type: "lens-set", on: !state.lensOn });
-    if (state.lensOn) void scan();
+    const requestedOn = pageView;
+    if (state.lensOn) {
+      if (!feedback()) dispatch({ type: "lens-set", on: false });
+      return;
+    }
+    dispatch({ type: "lens-set", on: true });
+    void scan();
+    await finishScan();
+    if (mode === "page" && pageView === requestedOn && href === location.href) feedback();
   }
 
   const mutate = observePage(() => void scan(), navigate, projection.onMutations);
@@ -224,9 +290,7 @@ function start() {
     if (next === "page") {
       if (mode === "site") return;
       mode = "page";
-      // Events from this press belong to the route it was pressed on.
-      if (href !== location.href) reset();
-      togglePage();
+      void pressPage();
     } else if (mode !== "site") {
       mode = "site";
       reset();

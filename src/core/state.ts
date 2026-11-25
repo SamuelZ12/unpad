@@ -53,7 +53,7 @@ export function removedRuns(state: PageState, docKey: DocKey): SentenceId[][] {
   return runs;
 }
 
-function marks(entry: DocState): readonly SentenceId[] {
+export function marks(entry: DocState): readonly SentenceId[] {
   return entry.picks.kind === "ready" ? entry.picks.key.filter((id) => !entry.unmarked.has(id)) : [];
 }
 
