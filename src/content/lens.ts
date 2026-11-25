@@ -284,11 +284,8 @@ function start() {
 
   function pressPage() {
     if (state.lensOn) {
-      const status = currentStatus();
-      if (status.kind !== "reading" && status.kind !== "cut") {
-        feedback(status);
-        return;
-      }
+      // Before the first scan lands there is nothing to keep, so end the attempt.
+      if (hint === undefined) return stop();
       scanVersion++;
       pendingFeedback = undefined;
       toast();
