@@ -41,3 +41,16 @@ test("a marked-only article counts until the last mark is dismissed", () => {
   const unmarked = reduce(ready, { type: "unmark", docKey: doc.key, id: id(1) });
   expect(pageStatus(unmarked, "none")).toEqual({ kind: "nothing-to-cut" });
 });
+
+test("an unscanned page is reading", () => {
+  expect(pageStatus(empty, undefined)).toEqual({ kind: "reading" });
+});
+
+test("available cuts take priority over pending and failed documents", () => {
+  const other = { ...doc, key: "other" as DocKey };
+  const pending = reduce(waiting, { type: "doc-found", doc: other });
+  const failed = reduce(pending, { type: "picks-failed", docKey: other.key, reason: "Offline" });
+  expect(pageStatus(failed, "none")).toEqual({ kind: "reading" });
+  const available = reduce(failed, { ...answer, selection: { kind: "keep", keep: [id(1)] } });
+  expect(pageStatus(available, "none")).toEqual({ kind: "cut", lensOn: true, removed: 5, marks: 0 });
+});

@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { chromium, type Page, type ViewportSize } from "playwright";
 
+export const xHomeUrl = "https://x.com/home";
+
 export const urls = {
   wang: "https://x.com/alexandr_wang/status/2124636606959345776",
   perfloop: "https://x.com/tsenart/status/2123483102936785334",
@@ -21,14 +23,14 @@ const fixtures = {
   perfloop: "x-loggedin-post-perfloop.html",
 };
 
-export async function fixture(name: Exclude<Reference, "warp">) {
+export async function fixture(name: Exclude<Reference, "warp">, home = false) {
   const article = await Bun.file("tests/fixtures/x/" + fixtures[name]).text();
   return `<!doctype html><meta charset=utf-8><style>
     body { font: 17px/1.5 system-ui; margin: 24px auto; width: 620px; color: #e7e9ea; background: #000 }
     img, svg, video, button { display: none } [data-block] { margin: 12px 0 }
     [data-testid=tweetText] { white-space: pre-wrap }
     [data-testid=twitter-article-title] { font-size: 28px; font-weight: bold }
-  </style><main><div data-testid=cellInnerDiv>${article}</div></main>`;
+  </style>${home ? "<header><h1>Home</h1></header>" : ""}<main><div data-testid=cellInnerDiv>${article}</div></main>`;
 }
 
 export async function launch(
@@ -59,8 +61,8 @@ export async function launch(
         if (route.request().resourceType() !== "document") return route.abort();
         const url = route.request().url();
         const name = url === urls.wang ? "wang" : "perfloop";
-        const replay = await fixture(name);
-        const body = url === "https://x.com/home" ? replay.replace("<main>", "<header><h1>Home</h1></header><main>") : replay;
+        const home = new URL(url).pathname === new URL(xHomeUrl).pathname;
+        const body = await fixture(name, home);
         await route.fulfill({ contentType: "text/html", body });
       });
     }

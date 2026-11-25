@@ -33,6 +33,7 @@ export default async function S13(context: CheckContext) {
       await browser.open(page, "wang");
       await waitForState(page, "waiting");
       await expectBadge("…");
+      assert.equal(await page.locator("filler-cut-toast").count(), 0);
       assert.equal(await badge(blankId), "");
     } finally {
       pending.resolve();

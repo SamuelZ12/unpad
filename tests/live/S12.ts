@@ -9,9 +9,9 @@ import { roots, state } from "./lib/browser";
 import { trace, waitForState, withBrowser } from "./lib/check";
 import { withBridge } from "./lib/cut";
 import { crop, difference, docBox, save, screenshot } from "./lib/pixels";
+import { articleUrl } from "./lib/sites";
 
 const shortStatus = "https://x.com/xavier_clegg/status/2124646690384986459";
-const otherSite = "https://www.anthropic.com/engineering/building-effective-agents";
 
 async function observeUntouched(root: Locator, evidence: string) {
   await root.waitFor({ state: "visible" });
@@ -50,7 +50,7 @@ export default async function S12(context: CheckContext) {
     const afterShort = await lineCount();
     assert.equal(afterShort - before, 0, "Short status added bridge log lines");
 
-    await page.goto(otherSite, { waitUntil: "domcontentloaded" });
+    await page.goto(articleUrl, { waitUntil: "domcontentloaded" });
     const article = page.locator("main article p:visible").filter({ hasText: /\S+(?:\s+\S+){30}/ }).first();
     const otherPixels = await observeUntouched(article, context.evidence + "/other-site");
     assert.deepEqual(await trace(page), []);

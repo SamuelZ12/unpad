@@ -2,7 +2,7 @@ import { pageStatus, type NoContentHint, type PageStatus } from "../core/page-st
 import { fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
 import type { Doc, DocKey, SentenceId } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
-import type { PageSnapshot } from "../shared/page-snapshot";
+import { documentRoute, type PageSnapshot } from "../shared/page-snapshot";
 import { statusFeedback } from "../shared/status-copy";
 import { MIN_MARK_SENTENCES } from "../shared/config";
 import { extract, type AnchoredDoc } from "./anchor";
@@ -30,13 +30,13 @@ function start() {
 
   let state: PageState = { lensOn: false, holding: false, docs: new Map() };
   let anchoredDocs: AnchoredDoc[] = [];
-  let hint: NoContentHint = "none";
+  let hint: NoContentHint | undefined;
   let scanError: string | undefined;
   let lastAttempt: PageStatus | undefined;
   let scanning: Promise<void> | undefined;
-  let pressedWhileReading = false;
+  let pendingFeedback: Mode | undefined;
   let lastStatus: string | undefined;
-  const toast = createToast();
+  const toast = createToast((change) => mutate(change));
 
   function visibleState() {
     return {
@@ -53,7 +53,7 @@ function start() {
   }
 
   function snapshot(): PageSnapshot {
-    return { url: href, mode, lensOn: state.lensOn, status: mode ? currentStatus() : lastAttempt };
+    return { mode, lensOn: state.lensOn, status: mode ? currentStatus() : lastAttempt };
   }
 
   type Pin = Parameters<typeof projection.reconcile>[2];
@@ -81,23 +81,27 @@ function start() {
     html.dataset.fillerCutFaded = String(fadedTotal);
     html.dataset.fillerCutMarked = String(markedTotal);
     const page = snapshot();
-    const signature = JSON.stringify([page, current]);
+    const signature = JSON.stringify([href, page, current]);
     if (signature !== lastStatus) {
       lastStatus = signature;
       void chrome.runtime.sendMessage({
         type: "page-status-changed", page, revealed: current === "revealed",
       }).catch(console.warn);
     }
+    settleFeedback(page.status);
   }
 
-  function feedback() {
-    const status = currentStatus();
-    const message = statusFeedback(status);
-    if (!message) return false;
-    pressedWhileReading = status.kind === "reading";
-    if (mode === "page" && !pressedWhileReading) stop(status);
-    toast(message);
-    return true;
+  function feedback(status: PageStatus) {
+    if (status.kind !== "cut") toast(statusFeedback(status));
+  }
+
+  function settleFeedback(status?: PageStatus) {
+    if (!pendingFeedback || !status || status.kind === "reading") return;
+    const endPageMode = pendingFeedback === "page" && status.kind !== "cut";
+    pendingFeedback = undefined;
+    if (endPageMode) stop(status);
+    toast();
+    feedback(status);
   }
 
   function logClicks(type: "restore" | "unmark", docKey: DocKey, ids: readonly SentenceId[]) {
@@ -114,11 +118,6 @@ function start() {
     if (next === state) return;
     state = next;
     render(pin);
-    if (pressedWhileReading && (event.type === "picks-arrived" || event.type === "picks-failed") &&
-      currentStatus().kind !== "reading") {
-      pressedWhileReading = false;
-      if (!feedback()) toast();
-    }
     if (event.type === "restore") logClicks("restore", event.docKey, event.ids);
     if (event.type === "unmark") logClicks("unmark", event.docKey, [event.id]);
   }
@@ -189,11 +188,11 @@ function start() {
     pageView++;
     scanVersion++;
     anchoredDocs = [];
-    hint = "none";
+    hint = undefined;
     scanError = undefined;
     lastAttempt = attempt;
     scanning = undefined;
-    pressedWhileReading = false;
+    pendingFeedback = undefined;
     toast();
     shown.clear();
     log = createLog(href);
@@ -215,7 +214,8 @@ function start() {
         (!anchor || !!document.getElementById(anchor) || document.getElementsByName(anchor).length > 0);
       if (sameDocument) href = location.href;
       else stop();
-    } else reset();
+    } else if (mode === "site" || lastAttempt) reset();
+    else href = location.href;
     void scan();
   }
 
@@ -231,10 +231,19 @@ function start() {
       navigate();
       reply(snapshot());
     }
-    if (message?.type === "site-press") {
-      if (mode !== "site") return;
-      void pressSite(message.url).then(reply, () => reply(false));
-      return true;
+    if (message?.type === "press" && typeof message.url === "string") {
+      navigate();
+      const { url } = message;
+      if (documentRoute(href) !== documentRoute(url) || hasFocusedEditor()) {
+        reply(false);
+      } else if (message.mode === "site") {
+        if (mode !== "site") return;
+        void pressSite(url).then(reply, () => reply(false));
+        return true;
+      } else if (message.mode === "page" && mode !== "site") {
+        pressPage();
+        reply(false);
+      }
     }
     if (message?.type === "site-removed" && mode === "site" && message.origin === location.origin) {
       stop();
@@ -244,12 +253,13 @@ function start() {
 
   listenForToggle(() => {
     if (!mode) return false;
-    void chrome.runtime.sendMessage({ type: "page-key" }).catch(console.warn);
+    void chrome.runtime.sendMessage({ type: "page-key", url: location.href }).catch(console.warn);
   });
 
   listenForHold(
-    () => dispatch({ type: "hold-start" }),
+    () => { if (mode) dispatch({ type: "hold-start" }); },
     (heldMs) => {
+      if (!mode) return;
       const revealed = view(visibleState()) === "revealed";
       dispatch({ type: "hold-end" });
       if (revealed) void log({ type: "reveal", heldMs }).catch(console.warn);
@@ -259,26 +269,36 @@ function start() {
   listenForMarkClick(projection.marks, ({ docKey, id }) => dispatch({ type: "unmark", docKey, id }));
 
   async function pressSite(url: string) {
-    navigate();
     const requestedOn = pageView;
-    if (href.split("#", 1)[0] !== url.split("#", 1)[0] || hasFocusedEditor()) return false;
-    if (currentStatus().kind === "no-content" && !scanning) void scan();
+    if (!scanning) void scan();
     await finishScan();
-    if (mode !== "site" || pageView !== requestedOn || href !== location.href || hasFocusedEditor()) return false;
-    return !feedback();
+    if (mode !== "site" || pageView !== requestedOn || documentRoute(location.href) !== documentRoute(url) ||
+      hasFocusedEditor()) return false;
+    const status = currentStatus();
+    if (status.kind === "cut") return true;
+    if (status.kind === "reading") pendingFeedback = "site";
+    feedback(status);
+    return false;
   }
 
-  async function pressPage() {
-    if (hasFocusedEditor()) return;
-    const requestedOn = pageView;
+  function pressPage() {
     if (state.lensOn) {
-      if (!feedback()) dispatch({ type: "lens-set", on: false });
+      const status = currentStatus();
+      if (status.kind !== "reading" && status.kind !== "cut") {
+        feedback(status);
+        return;
+      }
+      scanVersion++;
+      pendingFeedback = undefined;
+      toast();
+      dispatch({ type: "lens-set", on: false });
       return;
     }
+    mode = "page";
+    lastAttempt = undefined;
     dispatch({ type: "lens-set", on: true });
+    pendingFeedback = "page";
     void scan();
-    await finishScan();
-    if (mode === "page" && pageView === requestedOn && href === location.href) feedback();
   }
 
   const mutate = observePage(() => void scan(), navigate, projection.onMutations);
@@ -293,29 +313,23 @@ function start() {
     }
   });
 
-  return (next: Mode) => {
+  return () => {
     navigate();
-    if (next === "page") {
-      if (mode === "site") return;
-      mode = "page";
-      lastAttempt = undefined;
-      void pressPage();
-    } else if (mode !== "site") {
-      mode = "site";
-      reset();
-      const changes = ++lensChanges;
-      void chrome.storage.local.get("lensOn").then(({ lensOn }) => {
-        if (mode !== "site") return;
-        if (changes === lensChanges) dispatch({ type: "lens-set", on: lensOn !== false });
-        return scan();
-      });
-    }
+    if (mode === "site") return;
+    mode = "site";
+    reset();
+    const changes = ++lensChanges;
+    void chrome.storage.local.get("lensOn").then(({ lensOn }) => {
+      if (mode !== "site") return;
+      if (changes === lensChanges) dispatch({ type: "lens-set", on: lensOn !== false });
+      return scan();
+    });
   };
 }
 
 // Registration and immediate injection can meet in the same document.
 const page = globalThis as typeof globalThis & { fillerCutRun?: ReturnType<typeof start> };
 export function run(mode: Mode) {
-  if (mode === "page" && hasFocusedEditor()) return;
-  (page.fillerCutRun ??= start())(mode);
+  const enableSite = page.fillerCutRun ??= start();
+  if (mode === "site") enableSite();
 }

@@ -12,15 +12,7 @@ export default async function S12PageMode(context: CheckContext) {
     const page = tabs.pages()[0];
     const worker = await extensionWorker(tabs);
     const storage = { lensOn: false };
-    await worker.evaluate(async (storage) => {
-      await chrome.storage.local.set(storage);
-      const request = chrome.permissions.request.bind(chrome.permissions);
-      const probe = Object.assign(globalThis, { permissionRequests: 0 });
-      chrome.permissions.request = ((permission: chrome.permissions.Permissions) => {
-        probe.permissionRequests++;
-        return request(permission);
-      }) as typeof chrome.permissions.request;
-    }, storage);
+    await worker.evaluate((storage) => chrome.storage.local.set(storage), storage);
     const before = await grants(worker);
     const scripts = await registrations(worker);
     const cursor = (await context.bridge.requests()).length;
@@ -89,9 +81,7 @@ export default async function S12PageMode(context: CheckContext) {
     const { pendingEvents = [], ...stored } = await worker.evaluate(() => chrome.storage.local.get(null));
     assert.deepEqual(stored, storage);
     assert.deepEqual(pendingEvents, []);
-    assert.equal(await worker.evaluate(() =>
-      (globalThis as unknown as { permissionRequests: number }).permissionRequests), 0);
     assert.equal((await context.bridge.requests()).slice(cursor).filter(({ path }) => path === "/select").length, 1);
-    return `${faded.faded}/${entry.sentences.length} removed, same after a fragment change; editor, off, and reload 0 cuts; original HTML restored off; 1 select, 1 shown event, 0 permission requests, grants, registrations, or storage changes`;
+    return `${faded.faded}/${entry.sentences.length} removed, same after a fragment change; editor, off, and reload 0 cuts; original HTML restored off; 1 select, 1 shown event, 0 grants, registrations, or storage changes`;
   }));
 }

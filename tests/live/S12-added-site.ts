@@ -70,14 +70,14 @@ export default async function S12AddedSite(context: CheckContext) {
     await waitForState(page, "faded");
     // Remove from a different tab to test the Runs on list and restore the open article.
     await action.withPopup(other, async (popup) => {
-      const remove = popup.getByRole("button", { name: "Remove www.anthropic.com" });
+      const remove = popup.getByRole("button", { name: `Remove ${new URL(match).host}`, exact: true });
       await remove.click({ timeout: 5000 });
       await remove.waitFor({ state: "hidden", timeout: 5000 });
     });
     await setting(page, false, true);
     assert.deepEqual(await grants(worker), before);
-    assert.deepEqual(await registrations(worker), []);
     assert.equal((await waitForState(page, "idle")).faded, 0);
+    assert.deepEqual(await registrations(worker), []);
     assert.deepEqual(await marked(page), []);
     await assertCuts(root, entry, []);
     await poll(() => activeBadge(worker), (badge) => badge === "", 3000);

@@ -1,4 +1,5 @@
 import { TOGGLE_COMMAND } from "../shared/config";
+import { documentRoute, type PressTarget } from "../shared/page-snapshot";
 
 export async function ownsShortcut() {
   return (await chrome.commands.getAll()).some(({ name, shortcut }) => name === TOGGLE_COMMAND && !!shortcut);
@@ -64,39 +65,32 @@ export async function siteEnabled(url: string | undefined) {
 
 type SetLens = (on?: boolean) => Promise<void>;
 
-async function inspectDocument(tabId: number) {
-  const [document] = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.href });
-  return document;
-}
-
-export async function documentUrl(tabId: number) {
-  return (await inspectDocument(tabId).catch(() => undefined))?.result;
-}
-
-async function injectDocument(tabId: number, url: string, file: string) {
-  // Bind injection to the document inspected by the action, even if the tab navigates.
-  const document = await inspectDocument(tabId);
-  // Chrome keeps a #:~:text= directive in the tab URL and hides it from the page.
-  const route = (href: string) => href.split("#", 1)[0];
-  if (document?.documentId && document.result !== undefined && route(document.result) === route(url)) {
-    await chrome.scripting.executeScript({ target: { tabId, documentIds: [document.documentId] }, files: [file] });
+export async function inspectDocument(tabId: number): Promise<PressTarget | undefined> {
+  try {
+    const [document] = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.href });
+    if (document?.documentId && document.result && siteMatch(new URL(document.result))) {
+      return { tabId, documentId: document.documentId, url: document.result };
+    }
+  } catch {
+    // Restricted browser pages cannot be inspected.
   }
 }
 
-export async function activateDocument(tab: Pick<chrome.tabs.Tab, "id" | "url">, setLens: SetLens) {
-  const tabId = tab.id;
-  if (tabId === undefined) return;
-  const url = tab.url ?? await documentUrl(tabId);
-  if (!url || !siteMatch(new URL(url))) return;
-  if (!await siteEnabled(url)) return injectDocument(tabId, url, "page.js");
-  const press = () => chrome.tabs.sendMessage(tabId, { type: "site-press", url }, { frameId: 0 })
+function injectDocument({ tabId, documentId }: PressTarget, file: string) {
+  return chrome.scripting.executeScript({ target: { tabId, documentIds: [documentId] }, files: [file] });
+}
+
+export async function activateDocument({ tabId, documentId, url }: PressTarget, setLens: SetLens, existingScript = false) {
+  const mode = await siteEnabled(url) ? "site" : "page";
+  const press = () => chrome.tabs.sendMessage(tabId, { type: "press", url, mode }, { documentId })
     .catch(() => undefined);
   let shouldToggle = await press();
-  if (shouldToggle === undefined) {
-    await injectDocument(tabId, url, "main.js");
+  if (shouldToggle === undefined && !existingScript) {
+    await injectDocument({ tabId, documentId, url }, mode === "site" ? "main.js" : "page.js");
     shouldToggle = await press();
+    if (shouldToggle === undefined) throw new Error("The page did not receive the press");
   }
-  if (shouldToggle === true) await setLens();
+  if (shouldToggle === true && await siteEnabled(url)) await setLens();
 }
 
 export async function addSites(matches: string[], setLens: SetLens) {
@@ -107,8 +101,14 @@ export async function addSites(matches: string[], setLens: SetLens) {
   await Promise.all(enabled.map(registerSite));
   await setLens(true);
   const tabs = await chrome.tabs.query({ url: enabled });
-  await Promise.allSettled(tabs.flatMap(({ id, url }) => id !== undefined && url && enabled.includes(siteMatch(new URL(url)) ?? "")
-    ? [injectDocument(id, url, "main.js")] : []));
+  for (const { id, url } of tabs) {
+    if (id === undefined || !url) continue;
+    void inspectDocument(id).then(async (target) => {
+      if (target && documentRoute(target.url) === documentRoute(url) && await siteEnabled(target.url)) {
+        await injectDocument(target, "main.js");
+      }
+    }).catch(console.warn);
+  }
 }
 
 export async function deactivateSites(matches: string[]) {

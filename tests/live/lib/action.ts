@@ -43,7 +43,10 @@ export async function addFromPopup(page: Page, action: Awaited<ReturnType<typeof
   const match = `${url.protocol}//${url.hostname}:${url.port || (url.protocol === "https:" ? 443 : 80)}/*`;
   await preapproveHost(page.context(), match);
   await action.withPopup(page, async (popup) => {
-    await popup.locator("#always").check();
+    const checkbox = popup.locator("#always");
+    await checkbox.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await checkbox.isChecked(), false, "Preapproval must leave the site unchecked");
+    await checkbox.check();
     await popup.getByRole("button", { name: `Remove ${url.host}` }).waitFor({ timeout: 5000 });
   });
   return match;
@@ -85,12 +88,14 @@ export async function connectAction(context: BrowserContext, profile: string) {
     assert.ok(target, `No active tab target for ${page.url()}`);
     await cdp.send("Extensions.triggerAction", { id, targetId: target.targetId });
     const popupUrl = `chrome-extension://${id}/popup.html`;
-    await poll(async () => (await cdp.send("Target.getTargets")).targetInfos.some(({ url }) => url === popupUrl), Boolean, 5000);
+    await poll(async () => (await cdp.send("Target.getTargets")).targetInfos.some(({ url }) => url === popupUrl), Boolean, 5000)
+      .catch((error) => { throw new Error(`Chrome did not open ${popupUrl} for ${page.url()}`, { cause: error }); });
     // The first Playwright session sees the target before its popup page has a URL.
     const popupBrowser = await chromium.connectOverCDP(endpoint, { noDefaults: true });
     try {
       const popup = await poll(async () => popupBrowser.contexts()[0].pages().find((page) => page.url() === popupUrl),
-        (page) => !!page, 5000);
+        (page) => !!page, 5000)
+        .catch((error) => { throw new Error(`Playwright could not attach to ${popupUrl}`, { cause: error }); });
       assert.ok(popup);
       try {
         return await run(popup);
@@ -110,6 +115,7 @@ export async function connectAction(context: BrowserContext, profile: string) {
     press: (page: Page) => withPopup(page, async (popup) => {
       await popup.getByRole("switch").click({ timeout: 5000 });
       await popup.waitForFunction(() => document.querySelector<HTMLButtonElement>("#lens")?.disabled === false);
+      assert.equal(await popup.locator("#error").isHidden(), true, await popup.locator("#error").textContent() ?? "");
     }),
     close: () => browser.close(),
   };

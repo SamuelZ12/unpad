@@ -42,10 +42,12 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S17](S17.ts) | Wang has visible yellow tint on kept sentences. Holding Shift clears it. A click clears exactly one mark and logs one unmark. Short Perfloop stays untouched. |
 | [S18](S18.ts) | Warp shows cuts and yellow marks together. Lens off clears the tint. Saves the cut page. |
 | [S19](S19.ts) | Page mode cuts the bare-text essays Jessica and Great Work. Both reflow without added blank gaps, keep their marks, expand one run, and restore the exact original text and HTML. Saves each cut page. |
-| [S20](S20.ts) | The shortcut and switch on X home show the open-post hint, keep the shared lens unchanged, and send zero selection requests. A short post shows the plain toast. Saves the X home toast and light and dark popup screenshots for a cut article, X home, an unenabled site, and a Chrome internal page. |
+| [S20](S20.ts) | The page-key fallback and popup switch on X home show the open-post hint, keep the shared lens unchanged, and send zero selection requests. A short post shows the plain toast. Saves the X home toast and light and dark popup screenshots for a cut article, X home, an unenabled site, and a Chrome internal page. |
 | [S21](S21.ts) | Reload the same unpacked install after copying the new build over 0.2.0. The service worker reports the original shortcut under `toggle-lens` and saves both command lists. |
 
 S12 and its variants and S19 use fresh logged-out profiles in every suite. S20 uses replay and S21 uses an isolated upgrade profile. The logged-in suite also runs Warp-only rows in a fresh profile. S10 uses replay in the logged-out suite.
+
+On the tested Chromium build, S21 fails because the 0.2.0 install's ⌥⇧F assignment is empty for both commands after reload. The popup offers **Set a shortcut** on the updated install.
 
 ## What the checks observe
 

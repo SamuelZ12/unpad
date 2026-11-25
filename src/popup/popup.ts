@@ -1,6 +1,6 @@
-import { builtinSite, builtinSites, documentUrl, grantedSites, siteMatch } from "../background/sites";
+import { builtinSite, builtinSites, grantedSites, inspectDocument, siteMatch } from "../background/sites";
 import { TOGGLE_COMMAND } from "../shared/config";
-import type { PageSnapshot } from "../shared/page-snapshot";
+import type { PageSnapshot, PressTarget } from "../shared/page-snapshot";
 import { statusFeedback } from "../shared/status-copy";
 
 const lens = document.querySelector<HTMLButtonElement>("#lens")!;
@@ -15,10 +15,11 @@ const shortcut = document.querySelector<HTMLElement>("#shortcut")!;
 const change = document.querySelector<HTMLAnchorElement>("#change")!;
 
 let tabId: number | undefined;
-let tabUrl: string | undefined;
+let target: PressTarget | undefined;
 let match: string | undefined;
 let refreshId = 0;
 let shortcutLabel = "";
+let renderedSites = "";
 
 function showError(message: string) {
   error.textContent = message;
@@ -31,41 +32,44 @@ function describe(page: PageSnapshot | undefined, enabled: boolean) {
     const controls = shortcutLabel ? `the switch or ${shortcutLabel}` : "the switch";
     return `Off on this site. Use ${controls} to cut this page once.`;
   }
-  if (!status) return "Reading…";
+  if (!status) return "Use the switch to start Filler Cut here.";
   if (status.kind === "cut") {
-    const counts = [
-      status.removed ? `${status.lensOn ? "Removed" : "Can remove"} ${status.removed} sentence${status.removed === 1 ? "" : "s"}` : "",
-      status.marks ? `${status.marks} key point${status.marks === 1 ? "" : "s"}` : "",
-    ].filter(Boolean).join(" · ");
-    return status.lensOn ? counts : `Lens off · ${counts}`;
+    const counts: string[] = [];
+    if (status.removed) {
+      const verb = status.lensOn ? "Removed" : "Can remove";
+      counts.push(`${verb} ${status.removed} sentence${status.removed === 1 ? "" : "s"}`);
+    }
+    if (status.marks) counts.push(`${status.marks} key point${status.marks === 1 ? "" : "s"}`);
+    if (!status.lensOn) counts.unshift("Lens off");
+    return counts.join(" · ");
   }
   const feedback = statusFeedback(status);
-  if (!feedback) return "";
   return feedback.detail ? `${feedback.title}. ${feedback.detail}` : feedback.title;
 }
 
-async function refresh() {
-  const id = ++refreshId;
+async function refresh(id: number) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const [added, page, { lensOn }] = await Promise.all([
+  if (id !== refreshId) return;
+  tabId = tab?.id;
+  const [current, added, { lensOn }] = await Promise.all([
+    tabId === undefined ? undefined : inspectDocument(tabId),
     grantedSites(),
-    tab?.id === undefined ? undefined : chrome.tabs.sendMessage(tab.id, { type: "page-status" }, { frameId: 0 })
-      .catch(() => undefined) as Promise<PageSnapshot | undefined>,
     chrome.storage.local.get("lensOn"),
   ]);
-  const href = tab?.url ?? page?.url ?? (tab?.id === undefined ? undefined : await documentUrl(tab.id));
+  const page: PageSnapshot | undefined = current && await chrome.tabs.sendMessage(
+    current.tabId, { type: "page-status" }, { documentId: current.documentId },
+  ).catch(() => undefined);
   if (id !== refreshId) return;
 
-  tabId = tab?.id;
-  tabUrl = href;
-  const url = tabUrl && URL.parse(tabUrl);
-  const currentMatch = url ? siteMatch(url) : undefined;
+  target = current;
+  const url = current && new URL(current.url);
+  match = url && siteMatch(url);
   const builtIn = !!url && builtinSite(url);
-  const enabled = builtIn || (currentMatch !== undefined && added.includes(currentMatch));
-  match = currentMatch;
-  lens.hidden = setting.hidden = !currentMatch;
+  const enabled = builtIn || (match !== undefined && added.includes(match));
+  lens.hidden = setting.hidden = !match;
+  lens.setAttribute("aria-label", enabled ? "Filler Cut on enabled sites" : "Filler Cut on this page");
   lens.setAttribute("aria-checked", String(page?.mode ? page.lensOn : enabled && lensOn !== false));
-  status.textContent = currentMatch ? describe(page, enabled) : "Filler Cut can't run on this page.";
+  status.textContent = match ? describe(page, enabled) : "Filler Cut can't run on this page.";
   siteLabel.textContent = url ? `Always run on ${url.host}` : "";
   siteBuiltin.hidden = !builtIn;
   always.checked = enabled;
@@ -76,8 +80,13 @@ async function refresh() {
 function renderSites(added: string[]) {
   const builtIn = builtinSites();
   const list = [...builtIn, ...added.sort()];
-  sites.replaceChildren(...list.map((pattern) => {
-    const host = new URL(pattern).host;
+  const signature = JSON.stringify(list);
+  if (signature === renderedSites) return;
+  renderedSites = signature;
+  const urls = list.map((pattern) => new URL(pattern));
+  sites.replaceChildren(...urls.map((url, index) => {
+    const host = urls.some((other) => other !== url && other.host === url.host) ? url.origin : url.host;
+    const pattern = list[index];
     const row = document.createElement("li");
     const label = document.createElement("span");
     label.textContent = host;
@@ -96,7 +105,10 @@ function renderSites(added: string[]) {
 }
 
 function reloadPopup() {
-  void refresh().catch(() => showError("Couldn't read this tab."));
+  const id = ++refreshId;
+  void refresh(id).catch(() => {
+    if (id === refreshId) status.textContent = "Couldn't read this tab.";
+  });
 }
 
 async function removeSite(match: string) {
@@ -107,10 +119,10 @@ async function removeSite(match: string) {
 }
 
 lens.addEventListener("click", async () => {
-  if (tabId === undefined || !tabUrl) return;
+  if (!target) return;
   showError("");
   lens.disabled = true;
-  const pressed = await chrome.runtime.sendMessage({ type: "popup-press", tabId, url: tabUrl }).catch(() => false);
+  const pressed = await chrome.runtime.sendMessage({ type: "popup-press", ...target }).catch(() => false);
   if (!pressed) showError("Couldn't run Filler Cut on this page.");
   lens.disabled = false;
   reloadPopup();
@@ -134,7 +146,7 @@ always.addEventListener("change", async () => {
 
 change.addEventListener("click", (event) => {
   event.preventDefault();
-  void chrome.tabs.create({ url: change.href });
+  void chrome.tabs.create({ url: change.href }).catch(() => showError("Couldn't open shortcut settings."));
 });
 
 chrome.runtime.onMessage.addListener((message, sender) => {
@@ -157,4 +169,4 @@ void chrome.commands.getAll().then((commands) => {
     change.textContent = "Change";
     change.setAttribute("aria-label", "Change shortcut");
   }
-}).finally(reloadPopup);
+}).catch(() => showError("Couldn't read the shortcut.")).finally(reloadPopup);

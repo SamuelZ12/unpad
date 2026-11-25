@@ -1,10 +1,10 @@
 import { BRIDGE_URL, TOGGLE_COMMAND } from "../shared/config";
 import { sha256 } from "../shared/keys";
-import type { PageSnapshot } from "../shared/page-snapshot";
+import { documentRoute, type PageSnapshot } from "../shared/page-snapshot";
 import { parseErrorResponse, parseEventsRequest, parseSelectRequest, parseSelectResponse } from "../shared/wire";
 
 import { chromeEventQueue } from "./events";
-import { activateDocument, addSites, deactivateSites, forgetSites, optionalSiteMatches, ownsShortcut, restoreSites, siteEnabled } from "./sites";
+import { activateDocument, addSites, deactivateSites, forgetSites, grantedSites, inspectDocument, optionalSiteMatches, ownsShortcut, restoreSites, siteEnabled } from "./sites";
 
 export async function selectDoc(body: unknown, fetcher: (input: URL, init: RequestInit) => Promise<Response> = fetch) {
   const request = parseSelectRequest(body);
@@ -46,7 +46,12 @@ if (typeof chrome !== "undefined") {
   }
 
   chrome.commands.onCommand.addListener((name, tab) => {
-    if (name === TOGGLE_COMMAND && tab) void activateDocument(tab, setLens).catch(console.warn);
+    if (name !== TOGGLE_COMMAND || tab?.id === undefined) return;
+    void inspectDocument(tab.id).then((target) => {
+      if (target && (!tab.url || documentRoute(target.url) === documentRoute(tab.url))) {
+        return activateDocument(target, setLens);
+      }
+    }).catch(console.warn);
   });
   chrome.permissions.onAdded.addListener(({ origins }) => {
     void changeSites(() => addSites(optionalSiteMatches(origins), setLens));
@@ -66,37 +71,41 @@ if (typeof chrome !== "undefined") {
       return true;
     }
     if (sender.url === chrome.runtime.getURL("popup.html")) {
-      if (message?.type === "popup-press" && Number.isInteger(message.tabId) && typeof message.url === "string") {
-        void activateDocument({ id: message.tabId, url: message.url }, setLens).then(() => reply(true), () => reply(false));
+      if (message?.type === "popup-press" && Number.isInteger(message.tabId) &&
+        typeof message.url === "string" && typeof message.documentId === "string") {
+        const { tabId, documentId, url } = message;
+        void activateDocument({ tabId, documentId, url }, setLens).then(() => reply(true), () => reply(false));
         return true;
       }
       if (message?.type === "remove-site" && typeof message.match === "string" && optionalSiteMatches([message.match]).length) {
         const match: string = message.match;
         void changeSites(async () => {
-          await chrome.permissions.remove({ origins: [match] });
-          await deactivateSites([match]);
+          const removed = await chrome.permissions.remove({ origins: [match] });
+          if (!removed && (await grantedSites()).includes(match)) throw new Error("The site still has access");
         }).then(() => reply(true), () => reply(false));
         return true;
       }
     }
     if (message?.type === "page-status-changed") {
       const tabId = sender.tab?.id;
-      if (tabId === undefined || sender.frameId !== 0) return;
-      const { mode, status } = message.page as PageSnapshot;
+      if (tabId === undefined || sender.frameId !== 0 || !message.page || typeof message.page !== "object") return;
+      const { mode, status, lensOn } = message.page as PageSnapshot;
       let text = "";
-      if (mode && status && !message.revealed) {
+      if ((mode === "site" || (mode === "page" && lensOn === true)) && status && !message.revealed) {
         if (status.kind === "reading") text = "…";
         if (status.kind === "failed") text = "!";
-        if (status.kind === "cut" && status.removed && (mode === "site" || status.lensOn)) text = String(status.removed);
+        if (status.kind === "cut" && Number.isSafeInteger(status.removed) && status.removed > 0) text = String(status.removed);
       }
       void chrome.action.setBadgeText({ tabId, text }).then(() => reply(true), () => reply(false));
       return true;
     }
     if (message?.type === "page-key") {
-      if (sender.frameId !== 0 || sender.tab?.id === undefined || !sender.url) return;
+      const { documentId, tab } = sender;
+      if (sender.frameId !== 0 || tab?.id === undefined || !documentId || typeof message.url !== "string") return;
+      const target = { tabId: tab.id, documentId, url: message.url };
       // A browser shortcut and a page key event must never both toggle the lens.
       void ownsShortcut().then(async (assigned) => {
-        if (!assigned) await activateDocument({ ...sender.tab!, url: sender.url }, setLens);
+        if (!assigned) await activateDocument(target, setLens, true);
       }).then(() => reply(true), () => reply(false));
       return true;
     }

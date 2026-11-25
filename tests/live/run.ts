@@ -60,8 +60,16 @@ const bridge = await testBridge();
 const fallbackExtension = await mkdtemp("/tmp/filler-extension-fallback-");
 async function runChecks() {
   const reports: string[] = [];
+  const all = ids.includes("all");
+  const requested = all ? Object.keys(checks).filter((id) => /^S\d/.test(id)) : ids;
+  const profileMode = (id: string): Mode => {
+    if (id.startsWith("S12") || id === "S19" || id === "S21" ||
+      (mode === "logged-in" && ["S4", "S14", "S15", "S16", "S18"].includes(id))) return "logged-out";
+    if (id === "S20" || (id === "S10" && mode === "logged-out")) return "replay";
+    return mode;
+  };
   let accountError: unknown;
-  if (mode === "logged-in") {
+  if (requested.some((id) => profileMode(id) === "logged-in")) {
     try {
       const browser = await launch(mode);
       const page = browser.context.pages()[0];
@@ -77,15 +85,11 @@ async function runChecks() {
       accountError = error;
     }
   }
-  const all = ids.includes("all");
-  const requested = all ? Object.keys(checks).filter((id) => /^S\d/.test(id)) : ids;
   for (const id of requested) {
     const directory = join(evidence, id);
     await mkdir(directory);
     const check = checks[id as keyof typeof checks];
-    const freshProfile = id.startsWith("S12") || id === "S19" || id === "S21"
-      || (mode === "logged-in" && ["S4", "S14", "S15", "S16", "S18"].includes(id));
-    const actualMode = freshProfile ? "logged-out" : id === "S20" || (id === "S10" && mode === "logged-out") ? "replay" : mode;
+    const actualMode = profileMode(id);
     let message: string;
     try {
       if (accountError && actualMode === "logged-in") throw accountError;
