@@ -147,6 +147,7 @@ export default async function S20(context: CheckContext) {
         await lens.click();
         await popup.waitForFunction(() => document.querySelector<HTMLButtonElement>("#lens")?.disabled === false);
         await popup.locator("#lens[aria-checked=true]").waitFor({ timeout: 5000 });
+        assert.deepEqual(await popup.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
       });
       assert.equal((await waitForState(page, "faded", 5000)).faded, faded);
     }, "replay");
