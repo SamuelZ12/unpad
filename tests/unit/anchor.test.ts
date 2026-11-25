@@ -36,7 +36,7 @@ test("every captured document has ranges matching its sentences", async () => {
       await page.goto(url);
       const docs = await page.evaluate(async (source) => {
         const { extract, rangeOf } = await import(source) as typeof import("../../src/content/anchor");
-        return (await extract(document, new URL(location.href))).map(({ doc, sentences }) => ({
+        return (await extract(document, new URL(location.href))).docs.map(({ doc, sentences }) => ({
           surface: doc.surface, sentences: doc.sentences,
           ranges: sentences.map((sentence) => rangeOf(sentence)!.toString().replace(/\s+/gu, " ").trim()),
         }));
@@ -57,7 +57,7 @@ test("generic site mode needs five non-list blocks of at least 40 words", async 
     const docs = (html: string, checkArticle = true) => page.evaluate(async ({ module, html, checkArticle }) => {
       const { extract } = await import(module) as typeof import("../../src/content/anchor");
       document.querySelector("main")!.innerHTML = html;
-      return (await extract(document, new URL(location.href), checkArticle)).length;
+      return (await extract(document, new URL(location.href), checkArticle)).docs.length;
     }, { module, html, checkArticle });
 
     const sentence = "A useful sentence with enough words to exercise the paragraph rule.".split(" ");
@@ -84,7 +84,7 @@ test("a page of bare text split by <br> yields one document of whole sentences",
     await page.goto("https://paulgraham.com/jessica.html");
     const docs = await page.evaluate(async (source) => {
       const { extract, rangeOf } = await import(source) as typeof import("../../src/content/anchor");
-      return (await extract(document, new URL(location.href))).map(({ doc, sentences }) => ({
+      return (await extract(document, new URL(location.href))).docs.map(({ doc, sentences }) => ({
         surface: doc.surface, title: doc.title, sentences: doc.sentences,
         ranges: sentences.map((sentence) => rangeOf(sentence)!.toString().replace(/\s+/gu, " ").trim()),
       }));
@@ -123,7 +123,7 @@ test("whole removed paragraphs share one marker and leave their source nodes in 
       ]) {
         main.innerHTML = html;
         const projection = createProjection(() => {});
-        const [anchored] = await extract(document, new URL(location.href));
+        const [anchored] = (await extract(document, new URL(location.href))).docs;
         const text = anchored.sentences[3].slices[0].node;
         const parent = text.parentNode!;
         const visible = anchored.doc.sentences.filter((_, i) => [0, 4, 5, 6].includes(i)).join(" ");
@@ -133,7 +133,7 @@ test("whole removed paragraphs share one marker and leave their source nodes in 
         } as unknown as import("../../src/core/state").DocState;
         const state = { lensOn: true, holding: false, docs: new Map([[anchored.doc.key, docState]]) };
         projection.reconcile([anchored], state);
-        const [rebuilt] = await extract(document, new URL(location.href), false, projection.read);
+        const [rebuilt] = (await extract(document, new URL(location.href), false, projection.read)).docs;
         const marker = main.querySelector("[data-filler-cut-marker]");
         const cutContent = main.innerText.replace("···", "").replace(/\s+/gu, " ").trim();
         const children = [...main.querySelectorAll("p, br")].filter((node) => node.getClientRects().length > 0);
@@ -151,7 +151,7 @@ test("whole removed paragraphs share one marker and leave their source nodes in 
         const next = document.createTextNode(paragraphs[2]);
         parent.insertBefore(next, text);
         parent.removeChild(text);
-        const docs = await extract(document, new URL(location.href), false, projection.read);
+        const docs = (await extract(document, new URL(location.href), false, projection.read)).docs;
         projection.reconcile(docs, { ...state, lensOn: false });
         readings.push({ exactOriginal: main.innerHTML === html, replacement: next.parentNode === parent });
       }

@@ -74,11 +74,14 @@ async function injectDocument(tabId: number, url: string, file: string) {
 export async function activateDocument({ id: tabId, url }: chrome.tabs.Tab, setLens: SetLens) {
   if (tabId === undefined || !url || !siteMatch(new URL(url))) return;
   if (!await siteEnabled(url)) return injectDocument(tabId, url, "page.js");
-  const status = await chrome.tabs.sendMessage(tabId, { type: "editor-status" }, { frameId: 0 })
-    .catch(() => undefined) as { editing: boolean; site: boolean } | undefined;
-  if (status?.editing) return;
-  await setLens();
-  if (!status?.site) await injectDocument(tabId, url, "main.js");
+  const press = () => chrome.tabs.sendMessage(tabId, { type: "site-press", url }, { frameId: 0 })
+    .catch(() => undefined);
+  let shouldToggle = await press();
+  if (shouldToggle === undefined) {
+    await injectDocument(tabId, url, "main.js");
+    shouldToggle = await press();
+  }
+  if (shouldToggle === true) await setLens();
 }
 
 export async function setSite({ id: tabId, url }: chrome.tabs.Tab, checked: boolean, setLens: SetLens) {

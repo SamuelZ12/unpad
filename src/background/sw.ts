@@ -89,20 +89,25 @@ if (typeof chrome !== "undefined") {
       void sha256(message.data).then(reply);
       return true;
     }
-    if (message?.type === "badge") {
+    if (message?.type === "page-status-changed") {
       const tabId = sender.tab?.id;
-      if (tabId === undefined || sender.frameId !== 0 || typeof message.text !== "string" ||
-        !/^(?:…|!|[1-9]\d*)?$/.test(message.text)) return;
-      void chrome.action.setBadgeText({ tabId, text: message.text }).then(() => reply(true), () => reply(false));
+      if (tabId === undefined || sender.frameId !== 0) return;
+      const { mode, status } = message.page;
+      let text = "";
+      if (mode && !message.revealed) {
+        if (status.kind === "reading") text = "…";
+        if (status.kind === "failed") text = "!";
+        if (status.kind === "cut" && status.removed && (mode === "site" || status.lensOn)) text = String(status.removed);
+      }
+      void chrome.action.setBadgeText({ tabId, text }).then(() => reply(true), () => reply(false));
       return true;
     }
-    if (message?.type === "toggle") {
+    if (message?.type === "page-key") {
+      if (sender.frameId !== 0 || sender.tab?.id === undefined || !sender.url) return;
       // A browser shortcut and a page key event must never both toggle the lens.
       void ownsShortcut().then(async (assigned) => {
-        if (assigned) return false;
-        if (message.mode === "site" && await siteEnabled(sender.url)) await setLens();
-        return true;
-      }).then(reply, () => reply(false));
+        if (!assigned) await activateDocument({ ...sender.tab!, url: sender.url }, setLens);
+      }).then(() => reply(true), () => reply(false));
       return true;
     }
     if (message?.type === "site-enabled") {

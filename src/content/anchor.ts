@@ -1,3 +1,4 @@
+import type { NoContentHint } from "../core/page-status";
 import { segment } from "../core/segment";
 import { MAX_SENTENCES, MIN_SENTENCES } from "../shared/config";
 import { docKey } from "../shared/keys";
@@ -65,13 +66,15 @@ function anchor(block: Element, generic: boolean, read: ReadText) {
 
 export async function extract(
   document: Document, url: URL, checkArticle = false, read: ReadText = (node) => node.data,
-): Promise<AnchoredDoc[]> {
-  const docs = surfaces(document, url, checkArticle, read).map(async ({ root, surface, title, blocks, generic }) => {
+): Promise<{ docs: AnchoredDoc[]; hint: NoContentHint }> {
+  const surface = surfaces(document, url, checkArticle, read);
+  if (surface.kind === "x-other-route") return { docs: [], hint: "open-post" };
+  const docs = surface.docs.map(async ({ root, surface, title, blocks, generic }) => {
     const spans = blocks.flatMap((block) => anchor(block, !!generic, read));
     if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
     const sentences = spans.map(({ text }) => text);
     const key = await docKey(title, sentences);
     return { root, doc: { key, surface, title, sentences }, sentences: spans.map(({ sentence }) => sentence) };
   });
-  return (await Promise.all(docs)).filter((doc): doc is NonNullable<typeof doc> => !!doc);
+  return { docs: (await Promise.all(docs)).filter((doc): doc is NonNullable<typeof doc> => !!doc), hint: "none" };
 }
