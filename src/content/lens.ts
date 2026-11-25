@@ -34,7 +34,8 @@ function start() {
   let scanError: string | undefined;
   let lastAttempt: PageStatus | undefined;
   let scanning: Promise<void> | undefined;
-  let pendingFeedback: Mode | undefined;
+  // A press that arrives while picks are pending waits for them. A site press then reports whether to toggle.
+  let pendingFeedback: { mode: "page" } | { mode: "site"; settle: (status?: PageStatus) => void } | undefined;
   let lastStatus: string | undefined;
   const toast = createToast((change) => mutate(change));
 
@@ -97,11 +98,17 @@ function start() {
 
   function settleFeedback(status?: PageStatus) {
     if (!pendingFeedback || !status || status.kind === "reading") return;
-    const endPageMode = pendingFeedback === "page" && status.kind !== "cut";
+    const pending = pendingFeedback;
     pendingFeedback = undefined;
-    if (endPageMode) stop(status);
+    if (pending.mode === "page" && status.kind !== "cut") stop(status);
     toast();
     feedback(status);
+    if (pending.mode === "site") pending.settle(status);
+  }
+
+  function cancelFeedback() {
+    if (pendingFeedback?.mode === "site") pendingFeedback.settle();
+    pendingFeedback = undefined;
   }
 
   function logClicks(type: "restore" | "unmark", docKey: DocKey, ids: readonly SentenceId[]) {
@@ -193,7 +200,7 @@ function start() {
     scanError = undefined;
     lastAttempt = attempt;
     scanning = undefined;
-    pendingFeedback = undefined;
+    cancelFeedback();
     toast();
     shown.clear();
     log = createLog(href);
@@ -272,13 +279,15 @@ function start() {
     const requestedOn = pageView;
     if (!scanning) void scan();
     await finishScan();
-    if (mode !== "site" || pageView !== requestedOn || documentRoute(location.href) !== documentRoute(url) ||
-      hasFocusedEditor()) return false;
-    const status = currentStatus();
-    if (status.kind === "cut") return true;
-    if (status.kind === "reading") pendingFeedback = "site";
+    const current = () => mode === "site" && pageView === requestedOn && documentRoute(location.href) === documentRoute(url);
+    if (!current() || hasFocusedEditor()) return false;
+    let status: PageStatus | undefined = currentStatus();
     feedback(status);
-    return false;
+    if (status.kind === "reading") {
+      cancelFeedback();
+      status = await new Promise<PageStatus | undefined>((settle) => { pendingFeedback = { mode: "site", settle }; });
+    }
+    return status?.kind === "cut" && current();
   }
 
   function pressPage() {
@@ -286,7 +295,7 @@ function start() {
       // Before the first scan lands there is nothing to keep, so end the attempt.
       if (hint === undefined) return stop();
       scanVersion++;
-      pendingFeedback = undefined;
+      cancelFeedback();
       toast();
       dispatch({ type: "lens-set", on: false });
       return;
@@ -294,7 +303,7 @@ function start() {
     mode = "page";
     lastAttempt = undefined;
     dispatch({ type: "lens-set", on: true });
-    pendingFeedback = "page";
+    pendingFeedback = { mode: "page" };
     void scan();
   }
 
