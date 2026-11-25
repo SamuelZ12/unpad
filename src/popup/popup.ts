@@ -41,7 +41,7 @@ function describe(page: PageSnapshot | undefined, enabled: boolean) {
     }
     if (status.marks) counts.push(`${status.marks} key point${status.marks === 1 ? "" : "s"}`);
     if (!status.lensOn) counts.unshift("Lens off");
-    return counts.join(" · ");
+    return counts.join(" · ") || "All removed sentences are expanded.";
   }
   const feedback = statusFeedback(status);
   if (status.kind === "failed") return `${feedback.title} · ${status.reason}`;

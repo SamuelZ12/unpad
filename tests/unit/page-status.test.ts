@@ -35,6 +35,12 @@ test("turning off the lens keeps the count, and restoring sentences lowers it", 
   expect(pageStatus(off, "none")).toEqual({ kind: "cut", lensOn: false, removed: 2, marks: 1 });
 });
 
+test("the lens stays available when every removed sentence is expanded", () => {
+  const ready = reduce(waiting, { ...answer, selection: { kind: "keep", keep: [id(1)] } });
+  const expanded = reduce(ready, { type: "restore", docKey: doc.key, ids: [2, 3, 4, 5, 6].map(id) });
+  expect(pageStatus(expanded, "none")).toEqual({ kind: "cut", lensOn: true, removed: 0, marks: 0 });
+});
+
 test("a marked-only article counts until the last mark is dismissed", () => {
   const ready = reduce(waiting, { ...answer, selection: { kind: "keep-all" }, key: [id(1)] });
   expect(pageStatus(ready, "none")).toEqual({ kind: "cut", lensOn: true, removed: 0, marks: 1 });

@@ -6,9 +6,10 @@ import { isEditing } from "./keys";
 export const markerSelector = "[data-filler-cut-marker]";
 const restoredSelector = "[data-filler-cut-restored]";
 const linkSelector = "a, [role=link]";
+const interactive = `${linkSelector}, button, [role=button]:not(${restoredSelector}), summary`;
 const media = "img, svg, video, audio, iframe, canvas, input, select, textarea, button, hr";
 
-type Activate = (event: RunEvent, sentence: SentenceAnchor, control: HTMLElement) => void;
+type Activate = (event: RunEvent, sentence: SentenceAnchor, top: number) => void;
 type Run = { event: RunEvent; sentence: SentenceAnchor; parts: HTMLElement[] };
 type RunSlice = TextSlice & { run: Run };
 type Fragment = TextSlice & { text: Text; element: HTMLElement };
@@ -68,8 +69,8 @@ export function createCut(activate: Activate) {
   }
 
   function clear() {
-    for (const control of controls.keys()) {
-      if (control.matches(markerSelector)) control.remove();
+    for (const [control, run] of controls) {
+      if (run.event.type === "restore") control.remove();
     }
     for (const [node, { original, fragments, edited }] of projected) {
       for (const { element } of fragments) element.remove();
@@ -141,11 +142,15 @@ export function createCut(activate: Activate) {
     const run = controlRun(event.target);
     if (!run || !event.isTrusted || event.button !== 0 || isEditing(event)) return;
     if (run.event.type === "recut" && (selecting || event.composedPath().some(
-      (target) => target instanceof Element && target.matches(linkSelector)))) return;
+      (target) => target instanceof Element && target.matches(interactive)))) return;
     // Markers within inline links must handle the click before the site can follow it.
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (!selecting) activate(run.event, run.sentence, run.parts[0]);
+    if (!selecting) {
+      const top = run.event.type === "recut" && event.detail > 0
+        ? event.clientY : run.parts[0].getBoundingClientRect().top;
+      activate(run.event, run.sentence, top);
+    }
   }, true);
   window.addEventListener("keydown", (event) => {
     const run = controlRun(event.target);
@@ -153,7 +158,7 @@ export function createCut(activate: Activate) {
       (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (!event.repeat) activate(run.event, run.sentence, run.parts[0]);
+    if (!event.repeat) activate(run.event, run.sentence, run.parts[0].getBoundingClientRect().top);
   }, true);
 
   function addControl(run: Run, element: HTMLElement) {

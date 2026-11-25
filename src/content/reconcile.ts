@@ -20,8 +20,7 @@ function sameAnchors(a: AnchoredDoc, b: AnchoredDoc) {
 }
 
 export function createProjection(toggleRun: (action: RunAction) => void) {
-  const cut = createCut((event, sentence, control) =>
-    toggleRun({ event, sentence, top: control.getBoundingClientRect().top }));
+  const cut = createCut((event, sentence, top) => toggleRun({ event, sentence, top }));
   let paintMarks: ReturnType<typeof createMarkPainter> | undefined;
   let layout: readonly AnchoredDoc[] = [];
   let applied = "";
@@ -62,8 +61,10 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
       const changed = !same || key !== applied || cut.dirty;
       if (changed) {
         const hasRuns = next.some(({ removed, restored }) => removed.length || restored.length);
-        const pin = action?.event.type === "restore" ? action
-          : (hadRuns || hasRuns ? readingPin(docs, state) : undefined) ?? action;
+        let pin: Pin | undefined = action;
+        if (action?.event.type !== "restore" && (hadRuns || hasRuns)) {
+          pin = readingPin(docs, state) ?? action;
+        }
         cut.clear();
         cut.apply(next);
         const control = action && cut.control(action.event);
@@ -72,7 +73,6 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
             (pin === action ? control?.getBoundingClientRect() : undefined);
           if (rect?.width) window.scrollTo({ top: Math.round(window.scrollY + rect.top - pin.top), behavior: "instant" });
         }
-        control?.focus({ preventScroll: true });
         layout = docs;
         applied = key;
         hadRuns = hasRuns;
@@ -89,6 +89,7 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
         if (visibleMarks.length) (paintMarks ??= createMarkPainter())(visibleMarks.map(({ range }) => range));
         else paintMarks?.([]);
       }
+      return changed && action ? cut.control(action.event) : undefined;
     },
   };
 }

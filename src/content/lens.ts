@@ -64,7 +64,7 @@ function start() {
 
   function render(action?: RunAction) {
     if (orphaned()) return;
-    mutate(() => projection.reconcile(anchoredDocs, state, action));
+    const control = mutate(() => projection.reconcile(anchoredDocs, state, action));
     const html = document.documentElement;
     const current = view(visibleState());
     html.dataset.fillerCutState = current;
@@ -94,6 +94,7 @@ function start() {
       }).catch(console.warn);
     }
     settleFeedback(page.status);
+    control?.focus({ preventScroll: true });
   }
 
   function feedback(status: PageStatus) {

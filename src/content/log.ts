@@ -9,10 +9,11 @@ export function createLog(url: string) {
   return async (...events: SpecificEvent[]) => {
     const at = new Date().toISOString();
     const entries = await Promise.all(events.map(async (event): Promise<LogEvent> => {
+      const occurrence = event.type === "restore" || event.type === "recut" ? [randomId()] : [];
       const id = event.type === "reveal"
         ? randomId()
         : await sha256(JSON.stringify([
-          pageView, event.type, event.cacheKey, "sentenceId" in event ? event.sentenceId : null,
+          pageView, event.type, event.cacheKey, "sentenceId" in event ? event.sentenceId : null, ...occurrence,
         ]));
       return { ...event, id, at, pageView, url };
     }));

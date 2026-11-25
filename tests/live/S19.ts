@@ -57,6 +57,8 @@ export default async function S19(context: CheckContext) {
       await restored.press("Space");
       await assertCuts(root, entry, ids);
       await assertMarked(page, entry);
+      assert.equal(await widestGap(root), gap, `${name}: blank gaps changed after recut`);
+      await expandRun(root, entry, ids, Math.max(0, multi));
       await action.press(page);
       await waitForState(page, "picks-ready");
       const off = await snapshot(root);
