@@ -57,8 +57,11 @@ export async function launch(
     if (mode === "replay") {
       await context.route("https://x.com/**", async (route) => {
         if (route.request().resourceType() !== "document") return route.abort();
-        const name = route.request().url() === urls.wang ? "wang" : "perfloop";
-        await route.fulfill({ contentType: "text/html", body: await fixture(name) });
+        const url = route.request().url();
+        const name = url === urls.wang ? "wang" : "perfloop";
+        const replay = await fixture(name);
+        const body = url === "https://x.com/home" ? replay.replace("<main>", "<header><h1>Home</h1></header><main>") : replay;
+        await route.fulfill({ contentType: "text/html", body });
       });
     }
     async function open(page: Page, name: Reference) {

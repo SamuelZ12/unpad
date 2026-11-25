@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Page, Worker } from "playwright";
 import { state } from "./browser";
 
-export const articleUrl = "https://www.anthropic.com/engineering/building-effective-agents";
+export const articleUrl = "https://www.anthropic.com/research/building-effective-agents";
 
 export async function openSite(page: Page, url: string) {
   await page.emulateMedia({ reducedMotion: "reduce" });

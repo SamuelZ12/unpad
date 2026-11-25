@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
-import { extensionWorker, setAlwaysRun, withActionBrowser } from "./lib/action";
+import { extensionWorker, addFromPopup, withActionBrowser } from "./lib/action";
 import { waitForState } from "./lib/check";
 import { assertCuts, cacheEntry, pickedCuts, proseHtml, withBridge } from "./lib/cut";
 import { marked } from "./lib/marks";
@@ -11,31 +11,28 @@ export default async function S12AddedSite(context: CheckContext) {
   return withBridge(context, () => withActionBrowser(async (tabs, action) => {
     const page = tabs.pages()[0];
     const worker = await extensionWorker(tabs);
-    await worker.evaluate(async () => {
-      await chrome.storage.local.set({ lensOn: false });
-      const update = chrome.contextMenus.update.bind(chrome.contextMenus);
-      type MenuProps = Parameters<typeof update>[1];
-      const probe = Object.assign(globalThis, { siteMenu: undefined as MenuProps | undefined });
-      chrome.contextMenus.update = ((id: string | number, props: MenuProps) => {
-        if (id === "always-run") probe.siteMenu = props;
-        return update(id, props);
-      }) as typeof chrome.contextMenus.update;
-    });
-    const menu = () => worker.evaluate(() =>
-      (globalThis as unknown as { siteMenu: { checked: boolean; enabled: boolean } }).siteMenu);
+    await worker.evaluate(() => chrome.storage.local.set({ lensOn: false }));
+    const setting = (target: typeof page, checked: boolean, enabled: boolean) =>
+      action.withPopup(target, async (popup) => {
+        const box = popup.locator("#always");
+        await box.waitFor({ state: "visible", timeout: 5000 });
+        assert.equal(await box.isChecked(), checked);
+        assert.equal(await box.isEnabled(), enabled);
+        if (checked && enabled) await popup.getByRole("button", { name: /Remove/ }).waitFor({ timeout: 5000 });
+      });
     const index = (await context.bridge.requests()).length;
     const before = await grants(worker);
     await openSite(page, articleUrl);
     await assertUninjected(page);
-    await poll(menu, (state) => state?.checked === false && state.enabled, 3000);
+    await setting(page, false, true);
     const timeOrigin = await page.evaluate(() => performance.timeOrigin);
-    const match = await setAlwaysRun(page, true, action);
+    const match = await addFromPopup(page, action);
     assert.equal(await page.evaluate(() => performance.timeOrigin), timeOrigin);
     assert.deepEqual(await grants(worker), [...before, match].sort());
-    assert.deepEqual(await registrations(worker), [match]);
-    assert.deepEqual(await menu(), { checked: true, enabled: true });
-    assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
     const faded = await waitForState(page, "faded");
+    assert.deepEqual(await registrations(worker), [match]);
+    await setting(page, true, true);
+    assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
     const first = await context.bridge.waitForRequest(index);
     const entry = await cacheEntry(context, first.cacheKey);
     const selected = pickedCuts(entry);
@@ -45,11 +42,11 @@ export default async function S12AddedSite(context: CheckContext) {
     await page.evaluate(() => document.fonts.ready);
     const painted = (await screenshot(page)).png;
     await save(context.evidence + "/added-site-faded", painted);
-    await action.trigger(page);
+    await action.press(page);
     assert.equal((await waitForState(page, "picks-ready")).faded, 0);
     const original = (await screenshot(page)).png;
     await save(context.evidence + "/added-site-original", original);
-    await action.trigger(page);
+    await action.press(page);
     assert.deepEqual(await waitForState(page, "faded"), faded);
 
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -60,20 +57,24 @@ export default async function S12AddedSite(context: CheckContext) {
 
     const other = await tabs.newPage();
     await openSite(other, "https://example.com/");
-    await poll(menu, (state) => state?.checked === false && state.enabled, 3000);
-    await page.bringToFront();
-    await poll(menu, (state) => state?.checked === true && state.enabled, 3000);
+    await setting(other, false, true);
+    await setting(page, true, true);
 
     await page.evaluate(() => document.fonts.ready);
-    await action.trigger(page);
+    await action.press(page);
     await waitForState(page, "picks-ready");
     const restored = await proseHtml(root);
     const reloadOriginal = (await screenshot(page)).png;
     await save(context.evidence + "/added-site-reload-original", reloadOriginal);
-    await action.trigger(page);
+    await action.press(page);
     await waitForState(page, "faded");
-    await setAlwaysRun(page, false, action);
-    assert.deepEqual(await menu(), { checked: false, enabled: true });
+    // Remove from a different tab to test the Runs on list and restore the open article.
+    await action.withPopup(other, async (popup) => {
+      const remove = popup.getByRole("button", { name: "Remove www.anthropic.com" });
+      await remove.click({ timeout: 5000 });
+      await remove.waitFor({ state: "hidden", timeout: 5000 });
+    });
+    await setting(page, false, true);
     assert.deepEqual(await grants(worker), before);
     assert.deepEqual(await registrations(worker), []);
     assert.equal((await waitForState(page, "idle")).faded, 0);
@@ -91,7 +92,7 @@ export default async function S12AddedSite(context: CheckContext) {
     await other.bringToFront();
     await openSite(other, "https://claude.com/");
     assert.equal(new URL(other.url()).hostname, "claude.com");
-    await poll(menu, (state) => state?.checked === true && !state.enabled, 3000);
-    return `${match} granted and registered; ${faded.faded}/${entry.sentences.length} removed on add and on reload; 2 selects, second a cache hit; removal restored original HTML and reload sent 0 selects; menu update calls matched added, other, and built-in tabs`;
+    await setting(other, true, false);
+    return `${match} granted and registered; ${faded.faded}/${entry.sentences.length} removed on add and on reload; 2 selects, second a cache hit; removal restored original HTML and reload sent 0 selects; popup checkbox matched added, other, and built-in tabs`;
   }));
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
-import { extensionWorker, setAlwaysRun, withActionBrowser } from "./lib/action";
+import { extensionWorker, addFromPopup, withActionBrowser } from "./lib/action";
 import { waitForState } from "./lib/check";
 import { cacheEntry, withBridge } from "./lib/cut";
 import { geometry, installGeometry, regionsChanged } from "./lib/geometry";
@@ -28,7 +28,7 @@ export default async function S12PageCheck(context: CheckContext) {
     const readme = page.locator("article.markdown-body p").filter({ hasText: /[A-Za-z]{4}/ }).first();
     await readme.waitFor({ state: "visible" });
     const original = await docCrop(readme);
-    await setAlwaysRun(page, true, action);
+    await addFromPopup(page, action);
     const skipped = await bridge.waitForRequest(index);
     assert.equal(skipped.result, "skip");
     assert.ok(skipped.source === "cache" || skipped.piCalls === 2);
@@ -69,7 +69,7 @@ export default async function S12PageCheck(context: CheckContext) {
     await openSite(page, articleUrl);
     const articleLocation = page.url();
     const beforeArticle = (await bridge.requests()).length;
-    await setAlwaysRun(page, true, action);
+    await addFromPopup(page, action);
     const article = await waitForState(page, "faded");
     const response = await bridge.waitForRequest(beforeArticle);
     assert.equal(response.result, "keep");

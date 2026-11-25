@@ -12,7 +12,7 @@ The toggle changes the shared lens on built-in and added sites. On other sites i
 
 ## How to get to it (user POV)
 
-On a cut page, click the toolbar icon or press Option+Shift+F on macOS or Alt+Shift+F elsewhere. Hold Shift alone to reveal the original.
+On a cut page, use the switch in the toolbar popup or press Option+Shift+F on macOS or Alt+Shift+F elsewhere. Hold Shift alone to reveal the original.
 
 ## Driving it with Playwright
 

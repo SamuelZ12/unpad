@@ -23,7 +23,8 @@ async function extensionSettings(context: BrowserContext, change: (page: Page, i
   }
 }
 
-async function preapproveHost(context: BrowserContext, match: string) {
+// Chromium's settings pre-approve the prompt. The popup still has to request the grant.
+export async function preapproveHost(context: BrowserContext, match: string) {
   await extensionSettings(context, (settings, id) => settings.evaluate(({ id, match }) => {
     const { developerPrivate } = chrome as unknown as {
       developerPrivate: { addHostPermission(id: string, match: string, done: () => void): void };
@@ -37,33 +38,23 @@ async function preapproveHost(context: BrowserContext, match: string) {
   }, { id, match }));
 }
 
-export async function setAlwaysRun(page: Page, checked: boolean, action: Awaited<ReturnType<typeof connectAction>>) {
-  const context = page.context();
+export async function addFromPopup(page: Page, action: Awaited<ReturnType<typeof connectAction>>) {
   const url = new URL(page.url());
   const match = `${url.protocol}//${url.hostname}:${url.port || (url.protocol === "https:" ? 443 : 80)}/*`;
-  if (checked) await preapproveHost(context, match);
-  const worker = await extensionWorker(context);
-  await worker.evaluate((next) => {
-    const { testSiteMenu } = globalThis as unknown as { testSiteMenu: { next?: boolean; result?: Promise<void> } };
-    testSiteMenu.next = next;
-    delete testSiteMenu.result;
-  }, checked);
-  await action.trigger(page);
-  await poll(() => worker.evaluate(async () => {
-    const { testSiteMenu } = globalThis as unknown as { testSiteMenu: { result?: Promise<void> } };
-    if (!testSiteMenu.result) return false;
-    await testSiteMenu.result;
-    return true;
-  }), Boolean, 5000);
+  await preapproveHost(page.context(), match);
+  await action.withPopup(page, async (popup) => {
+    await popup.locator("#always").check();
+    await popup.getByRole("button", { name: `Remove ${url.host}` }).waitFor({ timeout: 5000 });
+  });
   return match;
 }
 
 export async function withActionBrowser<T>(run: (
   tabs: BrowserContext, action: Awaited<ReturnType<typeof connectAction>>,
-) => Promise<T>) {
+) => Promise<T>, mode: "logged-out" | "replay" = "logged-out") {
   const profile = await mkdtemp("/tmp/filler-chrome-action-");
   try {
-    const { context: tabs, close } = await launch("logged-out", true, undefined, {
+    const { context: tabs, close } = await launch(mode, true, undefined, {
       actionProfile: profile, viewport: { width: 1280, height: 3900 },
     });
     try {
@@ -84,16 +75,42 @@ export async function withActionBrowser<T>(run: (
 export async function connectAction(context: BrowserContext, profile: string) {
   const id = await extensionId(context);
   const [port] = (await readFile(profile + "/DevToolsActivePort", "utf8")).split("\n");
-  const browser = await chromium.connectOverCDP("http://127.0.0.1:" + port, { noDefaults: true });
+  const endpoint = "http://127.0.0.1:" + port;
+  const browser = await chromium.connectOverCDP(endpoint, { noDefaults: true });
   const cdp = await browser.newBrowserCDPSession();
+  async function withPopup<T>(page: Page, run: (popup: Page) => Promise<T>) {
+    await page.bringToFront();
+    const { targetInfos } = await cdp.send("Target.getTargets", { filter: [{ type: "tab" }] });
+    const target = targetInfos.find(({ url, embedderData }) => url === page.url() && embedderData?.tabActive);
+    assert.ok(target, `No active tab target for ${page.url()}`);
+    await cdp.send("Extensions.triggerAction", { id, targetId: target.targetId });
+    const popupUrl = `chrome-extension://${id}/popup.html`;
+    await poll(async () => (await cdp.send("Target.getTargets")).targetInfos.some(({ url }) => url === popupUrl), Boolean, 5000);
+    // The first Playwright session sees the target before its popup page has a URL.
+    const popupBrowser = await chromium.connectOverCDP(endpoint, { noDefaults: true });
+    try {
+      const popup = await poll(async () => popupBrowser.contexts()[0].pages().find((page) => page.url() === popupUrl),
+        (page) => !!page, 5000);
+      assert.ok(popup);
+      try {
+        return await run(popup);
+      } catch (error) {
+        const detail = await popup.locator("body").innerText({ timeout: 1000 }).catch(() => "(popup closed)");
+        throw new Error(`${page.url()} popup "${detail}": ${error}`);
+      } finally {
+        if (!popup.isClosed()) await popup.close();
+      }
+    } finally {
+      await popupBrowser.close();
+    }
+  }
+
   return {
-    async trigger(page: Page) {
-      await page.bringToFront();
-      const { targetInfos } = await cdp.send("Target.getTargets", { filter: [{ type: "tab" }] });
-      const target = targetInfos.find(({ url, embedderData }) => url === page.url() && embedderData?.tabActive);
-      assert.ok(target, `No active tab target for ${page.url()}`);
-      await cdp.send("Extensions.triggerAction", { id, targetId: target.targetId });
-    },
+    withPopup,
+    press: (page: Page) => withPopup(page, async (popup) => {
+      await popup.getByRole("switch").click({ timeout: 5000 });
+      await popup.waitForFunction(() => document.querySelector<HTMLButtonElement>("#lens")?.disabled === false);
+    }),
     close: () => browser.close(),
   };
 }
