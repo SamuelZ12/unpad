@@ -59,7 +59,11 @@ function start() {
 
   type Pin = Parameters<typeof projection.reconcile>[2];
 
+  // An extension reload orphans this script. Leave the page to the script injected after it.
+  const orphaned = () => !chrome.runtime?.id;
+
   function render(pin?: Pin) {
+    if (orphaned()) return;
     mutate(() => projection.reconcile(anchoredDocs, state, pin));
     const html = document.documentElement;
     const current = view(visibleState());
@@ -147,7 +151,7 @@ function start() {
   }
 
   function scan() {
-    if (!mode || (mode === "page" && !state.lensOn)) return;
+    if (orphaned() || !mode || (mode === "page" && !state.lensOn)) return;
     const version = ++scanVersion;
     // An earlier scan must never replace the status of a newer document or mutation.
     const current = () => version === scanVersion && href === location.href;
