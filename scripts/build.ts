@@ -32,9 +32,8 @@ for (const file of await readdir(outdir)) {
 }
 await rename(`${outdir}/sw.js`, `${outdir}/${worker}`);
 
-for (const asset of ["popup.html", "popup.css"]) {
-  await Bun.write(`${outdir}/${asset}`, Bun.file(`src/popup/${asset}`));
-}
+await Promise.all(["popup.html", "popup.css"].map((asset) =>
+  Bun.write(`${outdir}/${asset}`, Bun.file(`src/popup/${asset}`))));
 
 await Bun.write(`${outdir}/manifest.json`, JSON.stringify({
   ...manifest,

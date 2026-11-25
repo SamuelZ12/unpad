@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
-import type { Page } from "playwright";
+import type { Page, Worker } from "playwright";
 import type { CheckContext } from "./run";
 import { extensionWorker, withActionBrowser } from "./lib/action";
-import { launch, urls } from "./lib/browser";
+import { launch, urls, xHomeUrl } from "./lib/browser";
 import { toggle, waitForState } from "./lib/check";
 import { withBridge } from "./lib/cut";
 
-const home = "https://x.com/home";
 const unenabled = "https://example.com/";
 const toast = (page: Page) => page.locator("filler-cut-toast").getByRole("status");
+
+async function watchSelections(worker: Worker) {
+  await worker.evaluate(() => {
+    const selectRequests = Object.assign(globalThis, { selections: 0 });
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type === "select") selectRequests.selections++;
+    });
+  });
+  return () => worker.evaluate(() => (globalThis as unknown as { selections: number }).selections);
+}
 
 async function captures(popup: Page, file: string, expected: string | RegExp, restricted = false) {
   await popup.waitForFunction(({ expected, regex }) => {
@@ -34,16 +43,16 @@ async function captures(popup: Page, file: string, expected: string | RegExp, re
 
 export default async function S20(context: CheckContext) {
   return withBridge(context, async () => {
-    const before = (await context.bridge.requests()).length;
     const fallback = await launch("replay", true, undefined, { extension: context.fallbackExtension });
     try {
       const page = fallback.context.pages()[0];
       await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
       const worker = await extensionWorker(fallback.context);
+      const selections = await watchSelections(worker);
       await worker.evaluate(() => chrome.storage.local.set({ lensOn: true }));
-      await page.goto(home);
-      assert.equal(page.url(), home);
-      await waitForState(page, "idle");
+      await page.goto(xHomeUrl);
+      assert.equal(page.url(), xHomeUrl);
+      await page.locator("html[data-filler-cut-debug]").waitFor({ state: "attached" });
       assert.equal(await toast(page).count(), 0);
       await toggle(page);
       await toast(page).getByText("Open a post or article to cut it.").waitFor({ timeout: 3000 });
@@ -51,16 +60,18 @@ export default async function S20(context: CheckContext) {
       assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
       await page.route("https://x.com/example/status/1", (route) => route.fulfill({
         contentType: "text/html",
+        headers: { "content-security-policy": "style-src 'none'" },
         body: '<main><article><a href="/example/status/1"><time>Now</time></a><div dir="auto" lang="en">Two short sentences. Like this one.</div></article></main>',
       }));
       await page.goto("https://x.com/example/status/1");
-      await waitForState(page, "idle");
+      await page.locator("html[data-filler-cut-debug]").waitFor({ state: "attached" });
       assert.equal(await toast(page).count(), 0);
       await toggle(page);
       await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
       assert.equal(await toast(page).innerText(), "Nothing to cut here");
+      assert.equal(await toast(page).evaluate((box) => getComputedStyle(box).position), "fixed");
       assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
-      assert.equal((await context.bridge.requests()).length, before);
+      assert.equal(await selections(), 0);
     } finally {
       await fallback.close();
     }
@@ -69,7 +80,8 @@ export default async function S20(context: CheckContext) {
       const page = tabs.pages()[0];
       await page.setViewportSize({ width: 1280, height: 850 });
       const worker = await extensionWorker(tabs);
-      await page.goto(home);
+      const selections = await watchSelections(worker);
+      await page.goto(xHomeUrl);
       await waitForState(page, "idle");
       await action.withPopup(page, async (popup) => {
         await captures(popup, context.evidence + "/x-home", "Nothing to cut here. Open a post or article to cut it.");
@@ -90,18 +102,27 @@ export default async function S20(context: CheckContext) {
         await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
         await popup.getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
         assert.equal(await toggle.getAttribute("aria-checked"), "false");
+        const snapshot = await popup.evaluate(async () => {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          return chrome.tabs.sendMessage(tab.id!, { type: "page-status" });
+        });
+        assert.equal(snapshot.mode, undefined);
       });
-      assert.equal((await context.bridge.requests()).length, before);
+      assert.equal(await selections(), 0);
 
       await page.goto("chrome://version/");
       await action.withPopup(page, (popup) =>
         captures(popup, context.evidence + "/chrome", "Filler Cut can't run on this page.", true));
 
       await page.goto(urls.wang);
-      await waitForState(page, "faded");
-      await action.withPopup(page, (popup) =>
-        captures(popup, context.evidence + "/cut", /^Removed \d+ sentences · \d+ key points$/));
+      const { faded } = await waitForState(page, "faded");
+      const marked = Number(await page.locator("html").getAttribute("data-filler-cut-marked"));
+      const expected = [
+        faded ? `Removed ${faded} sentence${faded === 1 ? "" : "s"}` : "",
+        marked ? `${marked} key point${marked === 1 ? "" : "s"}` : "",
+      ].filter(Boolean).join(" · ");
+      await action.withPopup(page, (popup) => captures(popup, context.evidence + "/cut", expected));
     }, "replay");
-    return "X home shortcut and switch show the post hint, short post shows the plain toast, lens unchanged and zero selects; one-shot blank page ends; four native popup states captured in light and dark";
+    return "X home page-key fallback and popup switch show the post hint, short post shows the plain toast, lens unchanged and zero selects; one-shot blank page ends; four native popup states captured in light and dark";
   });
 }

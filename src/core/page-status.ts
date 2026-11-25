@@ -9,8 +9,8 @@ export type PageStatus =
   | { kind: "nothing-to-cut" }
   | { kind: "failed"; reason: string };
 
-export function pageStatus(state: PageState, hint: NoContentHint): PageStatus {
-  if (!state.docs.size) return { kind: "no-content", hint };
+export function pageStatus(state: PageState, hint: NoContentHint | undefined): PageStatus {
+  if (!state.docs.size) return hint === undefined ? { kind: "reading" } : { kind: "no-content", hint };
   let removed = 0;
   let marked = 0;
   let waiting = false;

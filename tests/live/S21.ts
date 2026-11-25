@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import type { CheckContext } from "./run";
 import { TOGGLE_COMMAND } from "../../src/shared/config";
 import { extensionWorker } from "./lib/action";
-import { launch } from "./lib/browser";
+import { launch, xHomeUrl } from "./lib/browser";
 import { poll } from "./lib/pixels";
 import { bridgeUrl } from "./lib/bridge";
 
@@ -50,8 +50,8 @@ export default async function S21({ evidence }: CheckContext) {
         developerPrivate.getExtensionInfo(id, resolve);
       }), extensionHost), (item) => !!item && item.version === updated.version && item.state === "ENABLED", 5000);
       const wake = await context.newPage();
-      await wake.route("https://x.com/home", (route) => route.fulfill({ contentType: "text/html", body: "<p>Home</p>" }));
-      await wake.goto("https://x.com/home");
+      await wake.route(xHomeUrl, (route) => route.fulfill({ contentType: "text/html", body: "<p>Home</p>" }));
+      await wake.goto(xHomeUrl);
       const next = await poll(async () => context.serviceWorkers().find((worker) =>
         worker.url() === `chrome-extension://${extensionHost}/${updated.background.service_worker}`), Boolean, 5000);
       assert.ok(next);
@@ -60,7 +60,7 @@ export default async function S21({ evidence }: CheckContext) {
       assert.equal(after.version, updated.version);
       const key = after.commands.find(({ name }) => name === TOGGLE_COMMAND)?.shortcut;
       assert.equal(key, oldKey, `0.2.0 used ${oldKey}; after reload: ${JSON.stringify(after.commands)}`);
-      return `same unpacked install reloaded from ${before.version} to ${after.version}; ${oldKey} moved from _execute_action to ${TOGGLE_COMMAND}`;
+      return `same unpacked install reloaded from ${before.version} to ${after.version}; ${TOGGLE_COMMAND} reports the same default shortcut ${oldKey}`;
     } finally {
       await close();
     }

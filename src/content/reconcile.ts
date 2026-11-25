@@ -22,7 +22,7 @@ function sameAnchors(a: AnchoredDoc, b: AnchoredDoc) {
 export function createProjection(expand: (docKey: DocKey, ids: readonly SentenceId[], pin: Pin) => void) {
   const cut = createCut((docKey, ids, sentence, marker) =>
     expand(docKey, ids, { sentence, top: marker.getBoundingClientRect().top }));
-  const paintMarks = createMarkPainter();
+  let paintMarks: ReturnType<typeof createMarkPainter> | undefined;
   let layout: readonly AnchoredDoc[] = [];
   let applied = "";
   let hadCuts = false;
@@ -82,7 +82,8 @@ export function createProjection(expand: (docKey: DocKey, ids: readonly Sentence
           const range = rangeOf(sentences[id - 1], cut.locate);
           return range ? [{ docKey: doc.key, id, range }] : [];
         }));
-        paintMarks(visibleMarks.map(({ range }) => range));
+        if (visibleMarks.length) (paintMarks ??= createMarkPainter())(visibleMarks.map(({ range }) => range));
+        else paintMarks?.([]);
       }
     },
   };
