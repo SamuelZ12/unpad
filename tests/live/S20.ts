@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import type { Page, Worker } from "playwright";
 import type { CheckContext } from "./run";
-import { extensionWorker, withActionBrowser } from "./lib/action";
+import { addFromPopup, extensionWorker, withActionBrowser } from "./lib/action";
+import { registrations } from "./lib/sites";
 import { launch, urls, xHomeUrl } from "./lib/browser";
 import { toggle, waitForState } from "./lib/check";
 import { withBridge } from "./lib/cut";
+import { poll } from "./lib/pixels";
 
 const unenabled = "https://example.com/";
 const toast = (page: Page) => page.locator("filler-cut-toast").getByRole("status");
@@ -112,6 +114,13 @@ export default async function S20(context: CheckContext) {
         assert.equal(snapshot.mode, undefined);
       });
       assert.equal(await selections(), 0);
+      const match = await addFromPopup(page, action);
+      await poll(() => registrations(worker), (scripts) => scripts.join() === match, 3000);
+      await action.withPopup(page, async (popup) => {
+        await popup.getByRole("checkbox").uncheck();
+        await popup.getByRole("button", { name: /^Remove / }).waitFor({ state: "detached", timeout: 5000 });
+      });
+      await poll(() => registrations(worker), (scripts) => !scripts.length, 3000);
 
       await page.goto("chrome://version/");
       await action.withPopup(page, (popup) =>
@@ -126,6 +135,6 @@ export default async function S20(context: CheckContext) {
       ].filter(Boolean).join(" · ");
       await action.withPopup(page, (popup) => captures(popup, context.evidence + "/cut", expected));
     }, "replay");
-    return "X home page-key fallback and popup switch show the post hint, short post shows the plain toast, lens unchanged and zero selects; one-shot blank page ends; four native popup states captured in light and dark";
+    return "X home page-key fallback and popup switch show the post hint, short post shows the plain toast, lens unchanged and zero selects; one-shot blank page ends; popup checkbox adds and removes a routed site; four native popup states captured in light and dark";
   });
 }
