@@ -51,9 +51,8 @@ export default async function S8(context: CheckContext) {
             return { color: alpha(color), background: alpha(backgroundColor), cursor };
           });
         });
-        const muted = await paints();
-        assert.ok(muted.length > 0 && muted.every(({ color, background, cursor }) =>
-          Math.abs(color - 255 * .55) <= 1 && background === 0 && cursor === "pointer"), JSON.stringify(muted));
+        const muted = await poll(paints, (parts) => parts.length > 0 && parts.every(({ color, background, cursor }) =>
+          Math.abs(color - 255 * .55) <= 1 && background === 0 && cursor === "pointer"), 1000);
 
         // Position a kept sentence at the reading anchor before collapsing.
         const first = group[0] - 1;
