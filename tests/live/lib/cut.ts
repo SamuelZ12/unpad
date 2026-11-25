@@ -138,5 +138,6 @@ export function sentenceTop(root: Locator, sentence: string) {
 export function proseHtml(root: Locator) {
   return root.locator("p").evaluateAll((paragraphs) => paragraphs
     .filter((paragraph) => !paragraph.closest("nav, header, footer, aside, form, figure, table"))
-    .map((paragraph) => paragraph.outerHTML));
+    // Anthropic regenerates Base UI IDs on hydration. Compare the rest of the live markup.
+    .map((paragraph) => paragraph.outerHTML.replace(/ id="base-ui-[^"]+"/g, ' id="base-ui"')));
 }
