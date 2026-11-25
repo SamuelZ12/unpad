@@ -19,19 +19,19 @@ export function createToast(mutate: (change: () => void) => void) {
         box-sizing: border-box;
         max-width: calc(100vw - 32px);
         width: max-content;
-        padding: 10px 17px;
+        padding: 12px 20px;
         border: 1px solid light-dark(#deddd8, #44433e);
         border-radius: 20px;
         background: light-dark(#fff, #242423);
         color: light-dark(#242423, #f3f2ef);
         box-shadow: 0 3px 14px #0002;
-        font: 600 13px/1.4 system-ui, sans-serif;
+        font: 600 14px/1.4 system-ui, sans-serif;
         text-align: center;
         pointer-events: none;
         overflow-wrap: anywhere;
         transition: opacity 160ms ease;
       }
-      span { display: block; font-weight: 400; }
+      span { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; }
       .dismissed { opacity: 0; }
       @media (prefers-reduced-motion: reduce) { div { transition: none; } }
     `);
