@@ -67,14 +67,15 @@ export default async function S8(context: CheckContext) {
           }
           return parts.map((part) => {
             const { color, backgroundColor, cursor } = getComputedStyle(part);
-            const inherited = getComputedStyle(part.parentElement!).color;
+            const inherited = rgba(getComputedStyle(part.parentElement!).color);
             const foreground = rgba(color);
             const background = rgba(backgroundColor);
-            const matches = (actual: Uint8ClampedArray, percent: number) => {
-              const expected = rgba(`color-mix(in srgb, ${inherited} ${percent}%, transparent)`);
-              return actual.every((value, i) => Math.abs(value - expected[i]) <= 1);
+            const matches = (actual: Uint8ClampedArray, ratio: number) => {
+              const alpha = inherited[3] * ratio;
+              return Math.abs(actual[3] - alpha) <= 1 && actual.subarray(0, 3).every(
+                (value, i) => Math.abs(value - inherited[i]) <= Math.ceil(255 / alpha));
             };
-            return { muted: matches(foreground, 55), clear: background[3] === 0, tinted: matches(background, 9), cursor };
+            return { muted: matches(foreground, .55), clear: background[3] === 0, tinted: matches(background, .09), cursor };
           });
         });
         const muted = await poll(paints, (parts) => parts.length > 0 &&
