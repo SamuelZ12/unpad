@@ -92,7 +92,12 @@ function renderSites(added: string[]) {
     const label = document.createElement("span");
     label.textContent = host;
     row.append(label);
-    if (!builtIn.includes(pattern)) {
+    if (builtIn.includes(pattern)) {
+      const tag = document.createElement("span");
+      tag.className = "muted";
+      tag.textContent = "built in";
+      row.append(tag);
+    } else {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "remove";

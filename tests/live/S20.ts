@@ -27,7 +27,10 @@ async function captures(popup: Page, file: string, expected: string | RegExp, re
   assert.equal(await popup.getByRole("switch").isVisible(), !restricted);
   assert.equal(await popup.getByRole("checkbox").isVisible(), !restricted);
   assert.equal(await popup.getByRole("link", { name: "Change shortcut" }).count(), 1);
-  assert.deepEqual(await popup.locator("#sites li").allTextContents(), ["x.com", "claude.com"]);
+  assert.deepEqual(await popup.locator("#sites li").evaluateAll((rows) =>
+    rows.map((row) => [...row.children].map(({ textContent }) => textContent))), [["x.com", "built in"], ["claude.com", "built in"]]);
+  // Chrome's extension stylesheet shrinks body text to 75% unless the popup sets it.
+  assert.equal(await popup.locator("#status").evaluate((status) => getComputedStyle(status).fontSize), "13px");
   for (const colorScheme of ["light", "dark"] as const) {
     await popup.emulateMedia({ colorScheme });
     await popup.evaluate(async () => {
