@@ -23,6 +23,22 @@ async function extensionSettings(context: BrowserContext, change: (page: Page, i
   }
 }
 
+export async function reloadExtension(context: BrowserContext) {
+  const id = await extensionId(context);
+  const settings = await context.newPage();
+  try {
+    await settings.goto("chrome://extensions/");
+    const developer = settings.locator("#devMode");
+    const devMode = () => developer.evaluate((toggle) => (toggle as HTMLElement & { checked: boolean }).checked);
+    if (!await devMode()) await developer.click();
+    await poll(devMode, Boolean, 3000);
+    await settings.locator(`extensions-item[id="${id}"] #dev-reload-button`).click({ timeout: 5000 });
+    await Bun.sleep(1000);
+  } finally {
+    await settings.close();
+  }
+}
+
 // Chromium's settings pre-approve the prompt. The popup still has to request the grant.
 export async function preapproveHost(context: BrowserContext, match: string) {
   await extensionSettings(context, (settings, id) => settings.evaluate(({ id, match }) => {

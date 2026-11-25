@@ -52,10 +52,9 @@ async function refresh(id: number) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (id !== refreshId) return;
   tabId = tab?.id;
-  const [current, added, { lensOn }] = await Promise.all([
+  const [current, added] = await Promise.all([
     tabId === undefined ? undefined : inspectDocument(tabId),
     grantedSites(),
-    chrome.storage.local.get("lensOn"),
   ]);
   const page: PageSnapshot | undefined = current && await chrome.tabs.sendMessage(
     current.tabId, { type: "page-status" }, { documentId: current.documentId },
@@ -69,7 +68,7 @@ async function refresh(id: number) {
   const enabled = builtIn || (match !== undefined && added.includes(match));
   lens.hidden = setting.hidden = !match;
   lens.setAttribute("aria-label", enabled ? "Filler Cut on enabled sites" : "Filler Cut on this page");
-  lens.setAttribute("aria-checked", String(page?.mode ? page.lensOn : enabled && lensOn !== false));
+  lens.setAttribute("aria-checked", String(!!page?.mode && page.lensOn));
   status.textContent = match ? describe(page, enabled) : "Filler Cut can't run on this page.";
   siteLabel.textContent = url ? `Always run on ${url.host}` : "";
   siteBuiltin.hidden = !builtIn;

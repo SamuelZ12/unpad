@@ -85,12 +85,14 @@ export async function activateDocument({ tabId, documentId, url }: PressTarget, 
   const press = () => chrome.tabs.sendMessage(tabId, { type: "press", url, mode }, { documentId })
     .catch(() => undefined);
   let shouldToggle = await press();
-  if (shouldToggle === undefined && !existingScript) {
+  const injected = shouldToggle === undefined && !existingScript;
+  if (injected) {
     await injectDocument({ tabId, documentId, url }, mode === "site" ? "main.js" : "page.js");
     shouldToggle = await press();
     if (shouldToggle === undefined) throw new Error("The page did not receive the press");
   }
-  if (shouldToggle === true && await siteEnabled(url)) await setLens();
+  // A press that had to start the script asks for cuts, whatever the shared lens was.
+  if (shouldToggle === true && await siteEnabled(url)) await setLens(injected || undefined);
 }
 
 export async function addSites(matches: string[], setLens: SetLens) {
