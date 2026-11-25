@@ -9,7 +9,6 @@ export interface DocState {
   readonly doc: Doc;
   readonly picks: Picks;
   readonly restored: ReadonlySet<SentenceId>;
-  readonly unmarked: ReadonlySet<SentenceId>;
 }
 
 export interface PageState {
@@ -32,7 +31,6 @@ export type PageEvent =
   | { readonly type: "hold-start" }
   | { readonly type: "hold-end" }
   | RunEvent
-  | { readonly type: "unmark"; readonly docKey: DocKey; readonly id: SentenceId }
   | { readonly type: "navigated" };
 
 export type View = "idle" | "waiting" | "picks-ready" | "faded" | "revealed";
@@ -71,7 +69,7 @@ function contiguousRuns(ids: readonly SentenceId[]): SentenceId[][] {
 }
 
 export function marks(entry: DocState): readonly SentenceId[] {
-  return entry.picks.kind === "ready" ? entry.picks.key.filter((id) => !entry.unmarked.has(id)) : [];
+  return entry.picks.kind === "ready" ? entry.picks.key : [];
 }
 
 export function markedIds(state: PageState, docKey: DocKey): readonly SentenceId[] {
@@ -98,7 +96,7 @@ export function reduce(state: PageState, event: PageEvent): PageState {
     case "doc-found": {
       const { doc } = event;
       if (state.docs.has(doc.key)) return state;
-      const entry: DocState = { doc, picks: { kind: "waiting" }, restored: new Set(), unmarked: new Set() };
+      const entry: DocState = { doc, picks: { kind: "waiting" }, restored: new Set() };
       return { ...state, docs: new Map(state.docs).set(doc.key, entry) };
     }
   }
@@ -134,10 +132,6 @@ export function reduce(state: PageState, event: PageEvent): PageState {
       next = { ...entry, restored };
       break;
     }
-    case "unmark":
-      if (!markedIds(state, event.docKey).includes(event.id)) return state;
-      next = { ...entry, unmarked: new Set(entry.unmarked).add(event.id) };
-      break;
   }
   return { ...state, docs: new Map(state.docs).set(event.docKey, next) };
 }

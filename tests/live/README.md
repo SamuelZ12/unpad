@@ -1,6 +1,6 @@
 # Live Filler Cut checks
 
-The lens removes filler from the layout and marks key sentences in yellow. A small inline **···** marks each stretch of consecutive removed sentences. Hover to read its sentence count. Click it to expand the run in place. Hover over the muted text to tint the run and see its sentence count. Click the text to hide it again. Use Enter or Space to toggle a focused run. Click a marked sentence to remove its tint.
+The lens removes filler from the layout and marks key sentences in yellow. A small inline **···** marks each stretch of consecutive removed sentences. Hover to read its sentence count. Click it to expand the run in place. Hover over the muted text to tint the run and see its sentence count. Click the text to hide it again. Use Enter or Space to toggle a focused run. A click on a marked sentence does nothing.
 
 Toggle the lens with the switch in the toolbar popup or Option+Shift+F on macOS and Alt+Shift+F elsewhere. Hold Shift alone for 200 ms to see the original until release. The lens keeps a visible sentence at the same height as the text reflows. Turning the lens off restores the site's text and markup. The toolbar badge counts removed sentences and goes down when you expand a stretch.
 
@@ -37,9 +37,9 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S12-page-check](S12-page-check.ts) | Added GitHub skips the Firecrawl README and caches the verdict. The GitHub profile sends zero selection requests. Added Anthropic still cuts the checked article. |
 | [S13](S13.ts) | The badge reports pending picks, the removed sentence count, a lower count after expansion, a failure, and an empty count for an untouched page. A press after failure shows a toast. A press while picks are pending turns the lens on once they arrive. |
 | [S14](S14.ts) | The lens and Shift keys leave typing in Warp's newsletter field alone. |
-| [S15](S15.ts) | A kept Warp link follows its normal destination without expanding a run or removing a mark. |
+| [S15](S15.ts) | A kept Warp link follows its normal destination without expanding a run. |
 | [S16](S16.ts) | Warp cuts from cache within 1 s of its text entering the DOM. |
-| [S17](S17.ts) | Wang has visible yellow tint on kept sentences. Holding Shift clears it. A click clears exactly one mark and logs one unmark. Short Perfloop stays untouched. |
+| [S17](S17.ts) | Wang has visible yellow tint on kept sentences. Holding Shift clears it. Clicking a mark leaves it in place and logs nothing. Short Perfloop stays untouched. |
 | [S18](S18.ts) | Warp shows cuts and yellow marks together. Lens off clears the tint. Saves the cut page. |
 | [S19](S19.ts) | Page mode cuts the bare-text essays Jessica and Great Work. Both reflow without added blank gaps, keep their marks, toggle one run, and restore the exact original text and HTML. Saves each cut page. |
 | [S20](S20.ts) | The page-key fallback and popup switch on X home show the open-post hint, keep the shared lens unchanged, and send zero selection requests. A short post shows the plain toast. The popup checkbox adds and removes a routed site. After an extension reload, the switch restarts the open tab with the lens on. Saves the X home toast and light and dark popup screenshots for a cut article, X home, an unenabled site, and a Chrome internal page. |
@@ -53,7 +53,7 @@ On the tested Chromium build, S21 fails because the 0.2.0 install's ⌥⇧F assi
 
 - The DOM exposes the text and layout the reader sees. Snapshots cover the restored document. Screenshots check title and byline pixels and the yellow tint.
 - The existing `data-filler-cut-state` and `data-filler-cut-faded` attributes report the view and removed count. A marked-only article still reports `faded`. S13 reads the actual toolbar badge through the service worker.
-- The bridge logs `shown`, `restore`, `recut`, and `unmark` events. Check `events.jsonl` for clicks and `requests.jsonl` for cache hits and Pi calls.
+- The bridge logs `shown`, `restore`, and `recut` events. Check `events.jsonl` for clicks and `requests.jsonl` for cache hits and Pi calls.
 - Playwright sends the page shortcut. The popup checks use Chromium's `Extensions.triggerAction` to open the native popup. Site checks pre-approve the prompt in Chrome, then request the grant from the popup. A physical browser shortcut requires native input.
 
 ## Why S10 uses two X modes

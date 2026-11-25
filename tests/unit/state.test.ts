@@ -30,25 +30,19 @@ test("the view is derived from waiting, picks, lens, hold and restores", () => {
   expect(view(reduce(waiting, { type: "picks-failed", docKey: doc.key, reason: "Offline" }))).toBe("idle");
 });
 
-test("marks follow the lens, can be unmarked once, and do not overlap fades", () => {
+test("marks follow the lens and do not overlap fades", () => {
   const waiting = reduce(initial, { type: "doc-found", doc });
   const answer = { type: "picks-arrived", docKey: doc.key, cacheKey: "b" as CacheKey,
     selection: { kind: "keep", keep: [id(1), id(2)] }, key: [id(2), id(1), id(3), id(7)] } as const;
   const ready = reduce(waiting, answer);
   expect(markedIds(ready, doc.key)).toEqual([id(2), id(1)]);
-  const unmark = { type: "unmark", docKey: doc.key, id: id(2) } as const;
   const held = reduce(ready, { type: "hold-start" });
   expect(markedIds(held, doc.key)).toEqual([]);
-  expect(reduce(held, unmark)).toBe(held);
   expect(markedIds(reduce(held, { type: "hold-end" }), doc.key)).toEqual([id(2), id(1)]);
-  const unmarked = reduce(ready, unmark);
-  expect(markedIds(unmarked, doc.key)).toEqual([id(1)]);
-  expect(fadedIds(unmarked, doc.key)).toEqual(fadedIds(ready, doc.key));
-  expect(reduce(unmarked, unmark)).toBe(unmarked);
-  const off = reduce(unmarked, { type: "lens-set", on: false });
+  const off = reduce(ready, { type: "lens-set", on: false });
   expect(markedIds(off, doc.key)).toEqual([]);
-  expect(markedIds(reduce(off, { type: "lens-set", on: true }), doc.key)).toEqual([id(1)]);
-  expect(markedIds(reduce(unmarked, { type: "navigated" }), doc.key)).toEqual([]);
+  expect(markedIds(reduce(off, { type: "lens-set", on: true }), doc.key)).toEqual([id(2), id(1)]);
+  expect(markedIds(reduce(ready, { type: "navigated" }), doc.key)).toEqual([]);
   expect(markedIds(reduce(waiting, { ...answer, selection: { kind: "skip" } }), doc.key)).toEqual([]);
   const all = reduce(waiting, { ...answer, selection: { kind: "keep-all" } });
   expect(markedIds(all, doc.key)).toEqual([id(2), id(1), id(3)]);
