@@ -215,8 +215,7 @@ function start() {
         (!anchor || !!document.getElementById(anchor) || document.getElementsByName(anchor).length > 0);
       if (sameDocument) href = location.href;
       else stop();
-    } else if (mode === "site" || lastAttempt) reset();
-    else href = location.href;
+    } else reset();
     void scan();
   }
 
