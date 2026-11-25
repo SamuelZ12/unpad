@@ -18,8 +18,8 @@ import { usesGenericSurface } from "./surfaces";
 type Mode = "site" | "page";
 
 function start() {
-  const projection = createProjection((docKey, ids, pin) => {
-    dispatch({ type: "restore", docKey, ids }, pin);
+  const projection = createProjection((action) => {
+    dispatch(action.event, action);
   });
   let href = location.href;
   let log = createLog(href);
@@ -57,14 +57,14 @@ function start() {
     return { mode, lensOn: state.lensOn, status: mode ? currentStatus() : lastAttempt };
   }
 
-  type Pin = Parameters<typeof projection.reconcile>[2];
+  type RunAction = Parameters<typeof projection.reconcile>[2];
 
   // An extension reload orphans this script. Leave the page to the script injected after it.
   const orphaned = () => !chrome.runtime?.id;
 
-  function render(pin?: Pin) {
+  function render(action?: RunAction) {
     if (orphaned()) return;
-    mutate(() => projection.reconcile(anchoredDocs, state, pin));
+    const control = mutate(() => projection.reconcile(anchoredDocs, state, action));
     const html = document.documentElement;
     const current = view(visibleState());
     html.dataset.fillerCutState = current;
@@ -94,6 +94,7 @@ function start() {
       }).catch(console.warn);
     }
     settleFeedback(page.status);
+    control?.focus({ preventScroll: true });
   }
 
   function feedback(status: PageStatus) {
@@ -115,7 +116,7 @@ function start() {
     pendingFeedback = undefined;
   }
 
-  function logClicks(type: "restore" | "unmark", docKey: DocKey, ids: readonly SentenceId[]) {
+  function logClicks(type: "restore" | "recut" | "unmark", docKey: DocKey, ids: readonly SentenceId[]) {
     const entry = state.docs.get(docKey);
     if (entry?.picks.kind !== "ready") return;
     const { cacheKey } = entry.picks;
@@ -124,12 +125,12 @@ function start() {
     }))).catch(console.warn);
   }
 
-  function dispatch(event: PageEvent, pin?: Pin) {
+  function dispatch(event: PageEvent, action?: RunAction) {
     const next = reduce(state, event);
     if (next === state) return;
     state = next;
-    render(pin);
-    if (event.type === "restore") logClicks("restore", event.docKey, event.ids);
+    render(action);
+    if (event.type === "restore" || event.type === "recut") logClicks(event.type, event.docKey, event.ids);
     if (event.type === "unmark") logClicks("unmark", event.docKey, [event.id]);
   }
 

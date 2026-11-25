@@ -4,7 +4,7 @@ import type { Surface } from "../shared/types";
 
 export type ReadText = (node: Text) => string;
 
-export const projectionSelector = "[data-filler-cut-fragment], [data-filler-cut-marker]";
+export const projectionSelector = "[data-filler-cut-fragment], [data-filler-cut-marker], [data-filler-cut-restored]";
 
 interface SurfaceDoc {
   readonly root: Element;

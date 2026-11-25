@@ -13,15 +13,17 @@ export function pageStatus(state: PageState, hint: NoContentHint | undefined): P
   if (!state.docs.size) return hint === undefined ? { kind: "reading" } : { kind: "no-content", hint };
   let removed = 0;
   let marked = 0;
+  let expanded = false;
   let waiting = false;
   let reason: string | undefined;
   for (const entry of state.docs.values()) {
     removed += candidates(entry).length;
     marked += marks(entry).length;
+    expanded ||= entry.restored.size > 0;
     if (entry.picks.kind === "waiting") waiting = true;
     if (entry.picks.kind === "failed") reason ??= entry.picks.reason;
   }
-  if (removed || marked) return { kind: "cut", lensOn: state.lensOn, removed, marks: marked };
+  if (removed || marked || expanded) return { kind: "cut", lensOn: state.lensOn, removed, marks: marked };
   if (waiting) return { kind: "reading" };
   if (reason !== undefined) return { kind: "failed", reason };
   return { kind: "nothing-to-cut" };

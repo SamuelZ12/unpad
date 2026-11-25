@@ -18,6 +18,12 @@ export interface PageState {
   readonly docs: ReadonlyMap<DocKey, DocState>;
 }
 
+export type RunEvent = {
+  readonly type: "restore" | "recut";
+  readonly docKey: DocKey;
+  readonly ids: readonly SentenceId[];
+};
+
 export type PageEvent =
   | { readonly type: "lens-set"; readonly on: boolean }
   | { readonly type: "doc-found"; readonly doc: Doc }
@@ -25,7 +31,7 @@ export type PageEvent =
   | { readonly type: "picks-failed"; readonly docKey: DocKey; readonly reason: string }
   | { readonly type: "hold-start" }
   | { readonly type: "hold-end" }
-  | { readonly type: "restore"; readonly docKey: DocKey; readonly ids: readonly SentenceId[] }
+  | RunEvent
   | { readonly type: "unmark"; readonly docKey: DocKey; readonly id: SentenceId }
   | { readonly type: "navigated" };
 
@@ -44,8 +50,19 @@ export function fadedIds(state: PageState, docKey: DocKey): readonly SentenceId[
 }
 
 export function removedRuns(state: PageState, docKey: DocKey): SentenceId[][] {
+  return contiguousRuns(fadedIds(state, docKey));
+}
+
+export function restoredRuns(state: PageState, docKey: DocKey): SentenceId[][] {
+  const entry = state.docs.get(docKey);
+  return state.lensOn && !state.holding && entry
+    ? contiguousRuns([...entry.restored].sort((a, b) => a - b))
+    : [];
+}
+
+function contiguousRuns(ids: readonly SentenceId[]): SentenceId[][] {
   const runs: SentenceId[][] = [];
-  for (const id of fadedIds(state, docKey)) {
+  for (const id of ids) {
     const run = runs.at(-1);
     if (run && id === run.at(-1)! + 1) run.push(id);
     else runs.push([id]);
@@ -65,7 +82,7 @@ export function markedIds(state: PageState, docKey: DocKey): readonly SentenceId
 // Derive the view so the lens, hold, and per-doc picks cannot disagree with it.
 export function view(state: PageState): View {
   const docs = [...state.docs.values()];
-  if (docs.some((entry) => candidates(entry).length || marks(entry).length)) {
+  if (docs.some((entry) => candidates(entry).length || entry.restored.size || marks(entry).length)) {
     if (!state.lensOn) return "picks-ready";
     return state.holding ? "revealed" : "faded";
   }
@@ -103,11 +120,18 @@ export function reduce(state: PageState, event: PageEvent): PageState {
       if (entry.picks.kind !== "waiting") return state;
       next = { ...entry, picks: { kind: "failed", reason: event.reason } };
       break;
-    case "restore": {
-      const run = removedRuns(state, event.docKey).find((ids) =>
+    case "restore":
+    case "recut": {
+      const runs = event.type === "restore" ? removedRuns : restoredRuns;
+      const run = runs(state, event.docKey).find((ids) =>
         ids.length === event.ids.length && ids.every((id, i) => id === event.ids[i]));
       if (!run) return state;
-      next = { ...entry, restored: new Set([...entry.restored, ...run]) };
+      const restored = new Set(entry.restored);
+      for (const id of run) {
+        if (event.type === "restore") restored.add(id);
+        else restored.delete(id);
+      }
+      next = { ...entry, restored };
       break;
     }
     case "unmark":

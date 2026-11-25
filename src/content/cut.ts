@@ -1,11 +1,17 @@
 import { rangeOf, type SentenceAnchor, type TextSlice } from "./anchor";
 import type { DocKey, SentenceId } from "../shared/types";
+import type { RunEvent } from "../core/state";
+import { isEditing } from "./keys";
 
 export const markerSelector = "[data-filler-cut-marker]";
+const restoredSelector = "[data-filler-cut-restored]";
+const linkSelector = "a, [role=link]";
+const interactive = `${linkSelector}, button, [role=button]:not(${restoredSelector}), summary, label`;
 const media = "img, svg, video, audio, iframe, canvas, input, select, textarea, button, hr";
 
-type Expand = (docKey: DocKey, ids: readonly SentenceId[], sentence: SentenceAnchor, marker: HTMLElement) => void;
-type Cut = TextSlice & { marker?: HTMLElement };
+type Activate = (event: RunEvent, sentence: SentenceAnchor, top: number) => void;
+type Run = { event: RunEvent; sentence: SentenceAnchor; parts: HTMLElement[] };
+type RunSlice = TextSlice & { run: Run };
 type Fragment = TextSlice & { text: Text; element: HTMLElement };
 
 interface ProjectedText {
@@ -14,7 +20,7 @@ interface ProjectedText {
   edited: boolean;
 }
 
-export function createCut(expand: Expand) {
+export function createCut(activate: Activate) {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(`
     [data-filler-cut-fragment] { display: contents !important }
@@ -36,13 +42,24 @@ export function createCut(expand: Expand) {
       text-decoration: none;
     }
     ${markerSelector}:hover, ${markerSelector}:focus-visible { color: inherit }
-    ${markerSelector}:focus-visible { outline: 1px solid currentColor }
+    ${restoredSelector} {
+      display: inline !important;
+      color: color-mix(in srgb, currentColor 55%, transparent);
+      cursor: pointer;
+    }
+    ${restoredSelector}[data-filler-cut-hover] {
+      background-color: color-mix(in srgb, currentColor calc(9% / .55), transparent);
+    }
+    :is(${markerSelector}, ${restoredSelector}):focus-visible { outline: 1px solid currentColor }
   `);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 
   const projected = new Map<Text, ProjectedText>();
   const collapsed = new Set<Element>();
-  const markers = new Map<HTMLElement, () => void>();
+  const controls = new Map<HTMLElement, Run>();
+  const starts = new Map<string, HTMLElement>();
+  const runKey = ({ docKey, ids }: RunEvent) => `${docKey}:${ids[0]}`;
+  let hovered: Run | undefined;
   const blocks = new Set<Element>();
   let dirty = false;
 
@@ -52,13 +69,17 @@ export function createCut(expand: Expand) {
   }
 
   function clear() {
-    for (const marker of markers.keys()) marker.remove();
+    for (const [control, run] of controls) {
+      if (run.event.type === "restore") control.remove();
+    }
     for (const [node, { original, fragments, edited }] of projected) {
       for (const { element } of fragments) element.remove();
       if (!edited && node.data === "") node.data = original;
     }
     for (const element of collapsed) element.removeAttribute("data-filler-cut-collapsed");
-    markers.clear();
+    controls.clear();
+    starts.clear();
+    hovered = undefined;
     projected.clear();
     collapsed.clear();
     blocks.clear();
@@ -92,9 +113,24 @@ export function createCut(expand: Expand) {
     if (!anyContent && !block.matches("body, td, th")) collapse(block);
   }
 
-  function markerAction(event: Event) {
-    return event.target instanceof HTMLElement ? markers.get(event.target) : undefined;
+  function controlRun(target: EventTarget | null) {
+    return target instanceof HTMLElement ? controls.get(target) : undefined;
   }
+
+  function hover(run: Run | undefined) {
+    if (hovered === run) return;
+    for (const part of hovered?.parts ?? []) part.removeAttribute("data-filler-cut-hover");
+    hovered = run;
+    for (const part of run?.parts ?? []) part.setAttribute("data-filler-cut-hover", "");
+  }
+
+  window.addEventListener("pointerover", (event) => {
+    const run = controlRun(event.target);
+    hover(run?.event.type === "recut" ? run : undefined);
+  }, true);
+  window.addEventListener("pointerout", (event) => {
+    if (hovered !== controlRun(event.relatedTarget)) hover(undefined);
+  }, true);
 
   let wasSelected = false;
   window.addEventListener("pointerdown", () => {
@@ -103,81 +139,111 @@ export function createCut(expand: Expand) {
   window.addEventListener("click", (event) => {
     const selecting = wasSelected || document.getSelection()?.isCollapsed === false;
     wasSelected = false;
-    const action = markerAction(event);
-    if (!action || !event.isTrusted || event.button !== 0) return;
+    const run = controlRun(event.target);
+    if (!run || !event.isTrusted || event.button !== 0 || isEditing(event)) return;
+    if (run.event.type === "recut" && (selecting || event.composedPath().some(
+      (target) => target instanceof Element && target.matches(interactive)))) return;
     // Markers within inline links must handle the click before the site can follow it.
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (!selecting) action();
+    if (!selecting) {
+      const top = run.event.type === "recut" && event.detail > 0
+        ? event.clientY : run.parts[0].getBoundingClientRect().top;
+      activate(run.event, run.sentence, top);
+    }
   }, true);
   window.addEventListener("keydown", (event) => {
-    const action = markerAction(event);
-    if (!action || (event.key !== "Enter" && event.key !== " ")) return;
+    const run = controlRun(event.target);
+    if (!run || event.target !== run.parts[0] || !event.isTrusted || isEditing(event) ||
+      (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (!event.repeat) action();
+    if (!event.repeat) activate(run.event, run.sentence, run.parts[0].getBoundingClientRect().top);
   }, true);
 
-  function makeMarker(docKey: DocKey, ids: readonly SentenceId[], sentence: SentenceAnchor) {
-    const marker = document.createElement("span");
-    marker.dataset.fillerCutMarker = "";
-    marker.textContent = "···";
-    marker.tabIndex = 0;
-    marker.setAttribute("role", "button");
-    marker.title = `Show ${ids.length} removed ${ids.length === 1 ? "sentence" : "sentences"}`;
-    marker.setAttribute("aria-label", marker.title);
-    markers.set(marker, () => expand(docKey, ids, sentence, marker));
-    return marker;
+  function addControl(run: Run, element: HTMLElement) {
+    const { type, ids } = run.event;
+    const expand = type === "restore";
+    if (expand) {
+      element.dataset.fillerCutMarker = "";
+      element.textContent = "···";
+    } else element.dataset.fillerCutRestored = "";
+    const verb = expand ? "Show" : "Hide";
+    const noun = ids.length === 1 ? "sentence" : "sentences";
+    element.title = `${verb} ${ids.length} ${expand ? "removed " : ""}${noun}`;
+    if (!run.parts.length) {
+      element.tabIndex = 0;
+      element.setAttribute("role", "button");
+      element.setAttribute("aria-label", element.title);
+      starts.set(runKey(run.event), element);
+    }
+    run.parts.push(element);
+    controls.set(element, run);
   }
 
-  function apply(docs: readonly { docKey: DocKey; runs: readonly SentenceId[][]; sentences: readonly SentenceAnchor[] }[]) {
-    const cuts = new Map<Text, Cut[]>();
+  function apply(docs: readonly {
+    docKey: DocKey;
+    removed: readonly SentenceId[][];
+    restored: readonly SentenceId[][];
+    sentences: readonly SentenceAnchor[];
+  }[]) {
+    const slicesByNode = new Map<Text, RunSlice[]>();
     const links = new Set<Element>();
-    for (const { docKey, runs, sentences } of docs) {
-      for (const ids of runs) {
-        const first = sentences[ids[0] - 1];
-        if (!first.slices[0].node.isConnected) continue;
-        let marker: HTMLElement | undefined = makeMarker(docKey, ids, first);
-        for (const id of ids) {
-          const { block, slices } = sentences[id - 1];
-          blocks.add(block);
-          for (const slice of slices) {
-            if (!slice.node.isConnected) continue;
-            const link = slice.node.parentElement?.closest("a, [role=link]");
-            if (link) links.add(link);
-            const list = cuts.get(slice.node) ?? [];
-            const last = list.at(-1);
-            // Whitespace between adjacent removed sentences also belongs to the run.
-            if (!marker && last && !slice.node.data.slice(last.end, slice.start).trim()) {
-              list[list.length - 1] = { ...last, end: slice.end };
-            } else {
-              list.push({ ...slice, marker });
+    const foldedBlocks = new Set<Element>();
+    for (const { docKey, removed, restored, sentences } of docs) {
+      function project(type: RunEvent["type"], groups: readonly SentenceId[][]) {
+        for (const ids of groups) {
+          const sentence = sentences[ids[0] - 1];
+          if (!sentence.slices[0].node.isConnected) continue;
+          const run: Run = { event: { type, docKey, ids }, sentence, parts: [] };
+          for (const id of ids) {
+            const { block, slices } = sentences[id - 1];
+            blocks.add(block);
+            if (type === "restore") foldedBlocks.add(block);
+            for (const slice of slices) {
+              if (!slice.node.isConnected) continue;
+              const link = slice.node.parentElement?.closest(linkSelector);
+              if (link && type === "restore") links.add(link);
+              const list = slicesByNode.get(slice.node) ?? [];
+              const last = list.at(-1);
+              if (last?.run === run && !slice.node.data.slice(last.end, slice.start).trim()) {
+                list[list.length - 1] = { ...last, end: slice.end };
+              } else list.push({ ...slice, run });
+              slicesByNode.set(slice.node, list);
             }
-            cuts.set(slice.node, list);
-            marker = undefined;
           }
         }
       }
+      project("restore", removed);
+      project("recut", restored);
     }
 
-    for (const [node, slices] of cuts) {
+    for (const [node, slices] of [...slicesByNode].sort(([a], [b]) =>
+      a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)) {
       const original = node.data;
       const fragments: Fragment[] = [];
       const replacement = document.createDocumentFragment();
       let start = 0;
-      function keep(end: number) {
+      function keep(end: number, run?: Run) {
         if (end <= start) return;
         const element = document.createElement("span");
-        element.dataset.fillerCutFragment = "";
+        if (run) addControl(run, element);
+        else element.dataset.fillerCutFragment = "";
         const text = document.createTextNode(original.slice(start, end));
         element.append(text);
         replacement.append(element);
         fragments.push({ node, start, end, text, element });
       }
-      for (const slice of slices) {
-        keep(slice.start);
-        if (slice.marker) replacement.append(slice.marker);
-        start = slice.end;
+      for (const { start: from, end, run } of slices.sort((a, b) => a.start - b.start)) {
+        keep(from);
+        start = from;
+        if (run.event.type === "recut") keep(end, run);
+        else if (!run.parts.length) {
+          const marker = document.createElement("span");
+          addControl(run, marker);
+          replacement.append(marker);
+        }
+        start = end;
       }
       keep(original.length);
       // React can still set, insert before, or remove its original Text child.
@@ -190,10 +256,11 @@ export function createCut(expand: Expand) {
       if (link.textContent?.trim() || link.querySelector(media)) continue;
       collapse(link);
     }
-    for (const block of blocks) foldEmptyLines(block);
+    for (const block of foldedBlocks) foldEmptyLines(block);
   }
 
   return {
+    control: (event: RunEvent) => starts.get(runKey(event)),
     read(node: Text) {
       const source = projected.get(node);
       return source && !source.edited && node.data === "" ? source.original : node.data;

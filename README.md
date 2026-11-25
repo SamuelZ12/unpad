@@ -1,6 +1,6 @@
 # filler-cut
 
-A Chrome extension that removes filler and marks key sentences in the author's own words. Click an inline ··· to expand a removed stretch, or hold Shift to see the original.
+A Chrome extension that removes filler and marks key sentences in the author's own words. Click an inline ··· to expand a removed stretch. Click the muted text to hide it again. Hold Shift to see the original.
 
 Private. Built clean-room: no code from Osso (GPL-3.0) or any other GPL project.
 

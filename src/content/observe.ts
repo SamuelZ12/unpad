@@ -40,9 +40,9 @@ export function observePage(scan: () => void, navigate: () => void, onMutations:
   if (navigation) navigation.addEventListener("currententrychange", urlChanged);
   else window.setInterval(urlChanged, 50);
 
-  return (project: () => void) => {
+  return <T>(project: () => T): T => {
     // Keep pending site mutations and discard records from the synchronous projection.
     changed(observer.takeRecords());
-    try { project(); } finally { observer.takeRecords(); }
+    try { return project(); } finally { observer.takeRecords(); }
   };
 }

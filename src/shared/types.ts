@@ -28,7 +28,7 @@ export type Selection =
 	| { readonly kind: "keep-all" }
 	| { readonly kind: "keep"; readonly keep: readonly SentenceId[] };
 
-type SentenceClickEvent<T extends "restore" | "unmark"> = {
+type SentenceClickEvent<T extends "restore" | "recut" | "unmark"> = {
 	readonly type: T; readonly id: string; readonly at: string; readonly pageView: string; readonly url: string;
 	readonly cacheKey: CacheKey; readonly sentenceId: SentenceId; readonly text: string;
 };
@@ -36,5 +36,6 @@ type SentenceClickEvent<T extends "restore" | "unmark"> = {
 export type LogEvent =
 	| { readonly type: "shown"; readonly id: string; readonly at: string; readonly pageView: string; readonly url: string; readonly cacheKey: CacheKey; readonly total: number; readonly faded: number; readonly marks?: number }
 	| SentenceClickEvent<"restore">
+	| SentenceClickEvent<"recut">
 	| SentenceClickEvent<"unmark">
 	| { readonly type: "reveal"; readonly id: string; readonly at: string; readonly pageView: string; readonly url: string; readonly heldMs: number };

@@ -50,6 +50,7 @@ test("events request checks each event", () => {
     { ...common, type: "reveal", heldMs: 100 },
     { ...common, type: "shown", cacheKey, total: 6, faded: 3, marks: 2 },
     { ...common, type: "unmark", cacheKey, sentenceId: 3, text: "Key sentence." },
+    { ...common, type: "recut", cacheKey, sentenceId: 2, text: "Sentence." },
   ];
   expect<unknown>(parseEventsRequest({ events })).toEqual({ events });
   expect(parseEventsRequest({})).toBeUndefined();
