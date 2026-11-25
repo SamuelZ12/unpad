@@ -53,13 +53,17 @@ export default async function S19(context: CheckContext) {
       const multi = runs(ids).findIndex((group) => group.length > 1);
       const { group } = await expandRun(root, entry, ids, Math.max(0, multi));
       await assertMarked(page, entry);
+      const restored = root.getByRole("button", { name: /^Hide [0-9]+ sentences?$/ });
+      await restored.press("Space");
+      await assertCuts(root, entry, ids);
+      await assertMarked(page, entry);
       await action.press(page);
       await waitForState(page, "picks-ready");
       const off = await snapshot(root);
       assert.equal(off.text, before.text, `${name}: text differs off`);
       assert.equal(off.html, before.html, `${name}: element structure differs off`);
       assert.deepEqual(await marked(page), []);
-      results.push(`${name} ${ids.length} removed, ${marks.length} marks, ${before.height - after.height}px shorter, max gap ${gap}px (original ${originalGap}px), expanded ${group.length}, exact original off`);
+      results.push(`${name} ${ids.length} removed, ${marks.length} marks, ${before.height - after.height}px shorter, max gap ${gap}px (original ${originalGap}px), toggled ${group.length}, exact original off`);
     }
     return results.join(" | ");
   }));

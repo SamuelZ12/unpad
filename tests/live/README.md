@@ -1,6 +1,6 @@
 # Live Filler Cut checks
 
-The lens removes filler from the layout and marks key sentences in yellow. A small inline **···** marks each stretch of consecutive removed sentences. Hover to read its sentence count. Click it to expand that stretch for the rest of the page view. The marker disappears and the returned text starts at its position. Click a marked sentence to remove its tint.
+The lens removes filler from the layout and marks key sentences in yellow. A small inline **···** marks each stretch of consecutive removed sentences. Hover to read its sentence count. Click it to expand the run in place. Hover over the muted text to tint the run and see its sentence count. Click the text to hide it again. Use Enter or Space to toggle a focused run. Click a marked sentence to remove its tint.
 
 Toggle the lens with the switch in the toolbar popup or Option+Shift+F on macOS and Alt+Shift+F elsewhere. Hold Shift alone for 200 ms to see the original until release. The lens keeps a visible sentence at the same height as the text reflows. Turning the lens off restores the site's text and markup. The toolbar badge counts removed sentences and goes down when you expand a stretch.
 
@@ -27,7 +27,7 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S5](S5.ts) | Wang stays untouched with the bridge down or with invalid picks. Restart and reload show the selected cuts. |
 | [S6](S6.ts) | Toggling the shared lens restores Wang and Warp in their existing tabs. Toggling it back recuts both. |
 | [S7](S7.ts) | A long Shift hold restores the original and release recuts. A short tap leaves the cuts in place. A visible kept sentence moves at most 1 px through Shift and toggle cycles. |
-| [S8](S8.ts) | A marker opens exactly its run at the marker's position. The run stays expanded after a lens toggle. Saves dark Wang before and after expansion. |
+| [S8](S8.ts) | A marker expands its run in place. The run is muted and tints on hover. Clicking it restores the marker with at most 1 px of kept-sentence drift. Enter reopens it and collapses it again. Shift and lens off restore the original HTML. The bridge records one recut per sentence per collapse. Saves light and dark screenshots. |
 | [S9](S9.ts) | The bridge logs one `shown` and one `restore` per expanded sentence. Events queued during a bridge outage reach the restarted bridge. |
 | [S10](S10.ts) | Replay replaces the Wang cell five times. Signed-in X must remove it through real scrolling and bring it back. Cuts and the expanded run return within 200 ms with zero new requests. Toggle, second-status navigation, and Back produce zero React DOM errors. A logged-out run uses replay for this row. |
 | [S11](S11.ts) | A second status shows zero stale markers. Back recuts Wang from cache within 1 s. Replay and signed-in X navigate in the same document. |
@@ -41,7 +41,7 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S16](S16.ts) | Warp cuts from cache within 1 s of its text entering the DOM. |
 | [S17](S17.ts) | Wang has visible yellow tint on kept sentences. Holding Shift clears it. A click clears exactly one mark and logs one unmark. Short Perfloop stays untouched. |
 | [S18](S18.ts) | Warp shows cuts and yellow marks together. Lens off clears the tint. Saves the cut page. |
-| [S19](S19.ts) | Page mode cuts the bare-text essays Jessica and Great Work. Both reflow without added blank gaps, keep their marks, expand one run, and restore the exact original text and HTML. Saves each cut page. |
+| [S19](S19.ts) | Page mode cuts the bare-text essays Jessica and Great Work. Both reflow without added blank gaps, keep their marks, toggle one run, and restore the exact original text and HTML. Saves each cut page. |
 | [S20](S20.ts) | The page-key fallback and popup switch on X home show the open-post hint, keep the shared lens unchanged, and send zero selection requests. A short post shows the plain toast. The popup checkbox adds and removes a routed site. After an extension reload, the switch restarts the open tab with the lens on. Saves the X home toast and light and dark popup screenshots for a cut article, X home, an unenabled site, and a Chrome internal page. |
 | [S21](S21.ts) | Reload the same unpacked install after copying the new build over 0.2.0. The service worker reports the original shortcut under `toggle-lens` and saves both command lists. |
 
@@ -53,7 +53,7 @@ On the tested Chromium build, S21 fails because the 0.2.0 install's ⌥⇧F assi
 
 - The DOM exposes the text and layout the reader sees. Snapshots cover the restored document. Screenshots check title and byline pixels and the yellow tint.
 - The existing `data-filler-cut-state` and `data-filler-cut-faded` attributes report the view and removed count. A marked-only article still reports `faded`. S13 reads the actual toolbar badge through the service worker.
-- The bridge's original `shown`, `restore`, and `unmark` event formats still apply. Check `events.jsonl` for clicks and `requests.jsonl` for cache hits and Pi calls.
+- The bridge logs `shown`, `restore`, `recut`, and `unmark` events. Check `events.jsonl` for clicks and `requests.jsonl` for cache hits and Pi calls.
 - Playwright sends the page shortcut. The popup checks use Chromium's `Extensions.triggerAction` to open the native popup. Site checks pre-approve the prompt in Chrome, then request the grant from the popup. A physical browser shortcut requires native input.
 
 ## Why S10 uses two X modes
