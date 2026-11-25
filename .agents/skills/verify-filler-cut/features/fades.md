@@ -14,7 +14,7 @@ Eligible pages show cuts and key sentence marks after picks arrive. The badge co
 
 ## How to get to it (user POV)
 
-Open an X status page, a Claude blog article, or an article on a site you added. Read the toolbar badge while picks arrive. On a new site, click the toolbar icon or press the toggle shortcut to cut the current document. To enable automatic cuts, right-click the toolbar icon, check **Always run on this site**, and select **Allow** in Chrome's prompt.
+Open an X status page, a Claude blog article, or an article on a site you added. Read the toolbar badge while picks arrive. On a new site, use the switch in the toolbar popup or press the toggle shortcut to cut the current document. To enable automatic cuts, open the popup, check **Always run on** for the site, and select **Allow** in Chrome's prompt.
 
 ## Driving it with Playwright
 

@@ -35,7 +35,7 @@ export default async function S19(context: CheckContext) {
       const before = await snapshot(root);
       const originalGap = await widestGap(root);
       await save(`${context.evidence}/${name}-original`, (await screenshot(page)).png);
-      await action.trigger(page);
+      await action.press(page);
       const cut = await waitForState(page, "faded");
       const row = await context.bridge.waitForRequest(index);
       const entry = await cacheEntry(context, row.cacheKey);
@@ -53,7 +53,7 @@ export default async function S19(context: CheckContext) {
       const multi = runs(ids).findIndex((group) => group.length > 1);
       const { group } = await expandRun(root, entry, ids, Math.max(0, multi));
       await assertMarked(page, entry);
-      await action.trigger(page);
+      await action.press(page);
       await waitForState(page, "picks-ready");
       const off = await snapshot(root);
       assert.equal(off.text, before.text, `${name}: text differs off`);

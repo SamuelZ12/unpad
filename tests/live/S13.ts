@@ -39,6 +39,9 @@ export default async function S13(context: CheckContext) {
     }
     await waitForState(page, "idle");
     await expectBadge("!");
+    assert.equal(await page.locator("filler-cut-toast").count(), 0);
+    await toggle(page);
+    await page.locator("filler-cut-toast").getByText("Couldn't get cuts for this page").waitFor({ timeout: 3000 });
     await bridge.stop();
 
     await bridge.warmCache();

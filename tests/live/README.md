@@ -2,9 +2,9 @@
 
 The lens removes filler from the layout and marks key sentences in yellow. A small inline **···** marks each stretch of consecutive removed sentences. Hover to read its sentence count. Click it to expand that stretch for the rest of the page view. The marker disappears and the returned text starts at its position. Click a marked sentence to remove its tint.
 
-Toggle the lens with the toolbar icon or Option+Shift+F on macOS and Alt+Shift+F elsewhere. Hold Shift alone for 200 ms to see the original until release. The lens keeps a visible sentence at the same height as the text reflows. Turning the lens off restores the site's text and markup. The toolbar badge counts removed sentences and goes down when you expand a stretch.
+Toggle the lens with the switch in the toolbar popup or Option+Shift+F on macOS and Alt+Shift+F elsewhere. Hold Shift alone for 200 ms to see the original until release. The lens keeps a visible sentence at the same height as the text reflows. Turning the lens off restores the site's text and markup. The toolbar badge counts removed sentences and goes down when you expand a stretch.
 
-On an unenabled site, the toolbar action starts page mode without a permission prompt. Reloading or leaving ends page mode. To enable automatic cuts, right-click the toolbar icon and select **Always run on this site**. On these added sites, the generic extractor needs five non-list prose blocks of at least 40 words. Pi checks whether the page is an article. A skipped page stays untouched. Page mode bypasses both article checks.
+On an unenabled site, the popup switch or shortcut starts page mode without a permission prompt. Reloading or leaving ends page mode. To enable automatic cuts, open the popup, check **Always run on** for the site, and approve access in Chrome. On these added sites, the generic extractor needs five non-list prose blocks of at least 40 words. Pi checks whether the page is an article. A skipped page stays untouched. Page mode bypasses both article checks.
 
 ## Run the checks
 
@@ -32,25 +32,27 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S10](S10.ts) | Replay replaces the Wang cell five times. Signed-in X must remove it through real scrolling and bring it back. Cuts and the expanded run return within 200 ms with zero new requests. Toggle, second-status navigation, and Back produce zero React DOM errors. A logged-out run uses replay for this row. |
 | [S11](S11.ts) | A second status shows zero stale markers. Back recuts Wang from cache within 1 s. Replay and signed-in X navigate in the same document. |
 | [S12](S12.ts) | A short X post and an unenabled Anthropic page show no changes or bridge requests. |
-| [S12-page-mode](S12-page-mode.ts) | Chrome's toolbar action cuts the Anthropic article in page mode with the shared lens off. A focused editor blocks activation. Lens off restores its prose HTML. A section link retains the cut and a new hash route or reload ends page mode. |
-| [S12-added-site](S12-added-site.ts) | Adding Anthropic cuts the open page and its reload. Removing access restores the original and clears the grant, script registration, and badge. The menu follows the active site. |
+| [S12-page-mode](S12-page-mode.ts) | The popup switch cuts the Anthropic article in page mode with the shared lens off. A focused editor blocks activation. Lens off restores its prose HTML. A section link retains the cut and a new hash route or reload ends page mode. |
+| [S12-added-site](S12-added-site.ts) | Adding Anthropic cuts the open page and its reload. Removing access restores the original and clears the grant, script registration, and badge. The popup checkbox follows the active site and removal works from the Runs on list in another tab. |
 | [S12-page-check](S12-page-check.ts) | Added GitHub skips the Firecrawl README and caches the verdict. The GitHub profile sends zero selection requests. Added Anthropic still cuts the checked article. |
-| [S13](S13.ts) | The badge reports pending picks, the removed sentence count, a lower count after expansion, a failure, and an empty count for an untouched page. |
+| [S13](S13.ts) | The badge reports pending picks, the removed sentence count, a lower count after expansion, a failure, and an empty count for an untouched page. A press after failure shows a toast. |
 | [S14](S14.ts) | The lens and Shift keys leave typing in Warp's newsletter field alone. |
 | [S15](S15.ts) | A kept Warp link follows its normal destination without expanding a run or removing a mark. |
 | [S16](S16.ts) | Warp cuts from cache within 1 s of its text entering the DOM. |
 | [S17](S17.ts) | Wang has visible yellow tint on kept sentences. Holding Shift clears it. A click clears exactly one mark and logs one unmark. Short Perfloop stays untouched. |
 | [S18](S18.ts) | Warp shows cuts and yellow marks together. Lens off clears the tint. Saves the cut page. |
 | [S19](S19.ts) | Page mode cuts the bare-text essays Jessica and Great Work. Both reflow without added blank gaps, keep their marks, expand one run, and restore the exact original text and HTML. Saves each cut page. |
+| [S20](S20.ts) | The shortcut and switch on X home show the open-post hint, keep the shared lens unchanged, and send zero selection requests. A short post shows the plain toast. Saves the X home toast and light and dark popup screenshots for a cut article, X home, an unenabled site, and a Chrome internal page. |
+| [S21](S21.ts) | Reload the same unpacked install after copying the new build over 0.2.0. The service worker reports the original shortcut under `toggle-lens` and saves both command lists. |
 
-S12 and its variants and S19 use fresh logged-out profiles in every suite. The logged-in suite also runs Warp-only rows in a fresh profile. S10 uses replay in the logged-out suite.
+S12 and its variants and S19 use fresh logged-out profiles in every suite. S20 uses replay and S21 uses an isolated upgrade profile. The logged-in suite also runs Warp-only rows in a fresh profile. S10 uses replay in the logged-out suite.
 
 ## What the checks observe
 
 - The DOM exposes the text and layout the reader sees. Snapshots cover the restored document. Screenshots check title and byline pixels and the yellow tint.
 - The existing `data-filler-cut-state` and `data-filler-cut-faded` attributes report the view and removed count. A marked-only article still reports `faded`. S13 reads the actual toolbar badge through the service worker.
 - The bridge's original `shown`, `restore`, and `unmark` event formats still apply. Check `events.jsonl` for clicks and `requests.jsonl` for cache hits and Pi calls.
-- Playwright sends the page shortcut. The toolbar action checks use Chromium's `Extensions.triggerAction`. Chrome's native permission prompt and a physical browser shortcut require native input.
+- Playwright sends the page shortcut. The popup checks use Chromium's `Extensions.triggerAction` to open the native popup. Site checks pre-approve the prompt in Chrome, then request the grant from the popup. A physical browser shortcut requires native input.
 
 ## Why S10 uses two X modes
 

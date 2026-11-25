@@ -34,7 +34,7 @@ export default async function S12PageMode(context: CheckContext) {
       input.focus({ preventScroll: true });
       return input;
     });
-    await action.trigger(page);
+    await action.press(page);
     await Bun.sleep(200);
     await assertUninjected(page);
     assert.equal((await context.bridge.requests()).length, cursor);
@@ -45,7 +45,7 @@ export default async function S12PageMode(context: CheckContext) {
     const original = (await screenshot(page)).png;
     await save(context.evidence + "/page-mode-original", original);
 
-    await action.trigger(page);
+    await action.press(page);
     const faded = await waitForState(page, "faded");
     const response = await context.bridge.waitForRequest(cursor);
     const entry = await cacheEntry(context, response.cacheKey);
@@ -55,7 +55,7 @@ export default async function S12PageMode(context: CheckContext) {
     assert.equal(faded.faded, selected.length);
     const painted = (await screenshot(page)).png;
     await save(context.evidence + "/page-mode-faded", painted);
-    await action.trigger(page);
+    await action.press(page);
     assert.equal((await waitForState(page, "picks-ready")).faded, 0);
     await poll(() => activeBadge(worker), (badge) => badge === "", 3000);
     assert.deepEqual(await marked(page), []);
@@ -64,7 +64,7 @@ export default async function S12PageMode(context: CheckContext) {
     await save(context.evidence + "/page-mode-off", off);
     assert.deepEqual(await proseHtml(root), originalDoc);
 
-    await action.trigger(page);
+    await action.press(page);
     assert.deepEqual(await waitForState(page, "faded"), faded);
     await page.evaluate(() => history.replaceState(history.state, "", "#" + document.querySelector("[id]:not([id*='%'])")!.id));
     await Bun.sleep(150);

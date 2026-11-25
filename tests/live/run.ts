@@ -2,6 +2,7 @@ import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { launch, type Mode } from "./lib/browser";
+import { TOGGLE_COMMAND } from "../../src/shared/config";
 import { bridgeUrl, testBridge } from "./lib/bridge";
 import load from "./load";
 import extract from "./extract";
@@ -31,9 +32,11 @@ import S18 from "./S18";
 
 import picks from "./picks";
 import S19 from "./S19";
+import S20 from "./S20";
+import S21 from "./S21";
 
 const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, S7, S14, S8, S9, S15, S10, S11, S12,
-  "S12-page-mode": S12PageMode, "S12-added-site": S12AddedSite, "S12-page-check": S12PageCheck, S13, S17, S18, S19 };
+  "S12-page-mode": S12PageMode, "S12-added-site": S12AddedSite, "S12-page-check": S12PageCheck, S13, S17, S18, S19, S20, S21 };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
@@ -80,9 +83,9 @@ async function runChecks() {
     const directory = join(evidence, id);
     await mkdir(directory);
     const check = checks[id as keyof typeof checks];
-    const freshProfile = id.startsWith("S12") || id === "S19"
+    const freshProfile = id.startsWith("S12") || id === "S19" || id === "S21"
       || (mode === "logged-in" && ["S4", "S14", "S15", "S16", "S18"].includes(id));
-    const actualMode = freshProfile ? "logged-out" : id === "S10" && mode === "logged-out" ? "replay" : mode;
+    const actualMode = freshProfile ? "logged-out" : id === "S20" || (id === "S10" && mode === "logged-out") ? "replay" : mode;
     let message: string;
     try {
       if (accountError && actualMode === "logged-in") throw accountError;
@@ -108,7 +111,7 @@ try {
     await cp("dist/extension", fallbackExtension, { recursive: true });
     const path = join(fallbackExtension, "manifest.json");
     const manifest = await Bun.file(path).json();
-    delete manifest.commands._execute_action.suggested_key;
+    delete manifest.commands[TOGGLE_COMMAND].suggested_key;
     await Bun.write(path, JSON.stringify(manifest));
     await runChecks();
   }
