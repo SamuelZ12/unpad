@@ -126,7 +126,6 @@ export default async function S8(context: CheckContext) {
         await save(`${context.evidence}/wang-${scheme}-recut`, (await screenshot(page)).png);
 
         const firstClicks = await verifyRecut();
-        cursor = (await context.bridge.events()).length;
         await page.keyboard.press("Enter");
         await assertCuts(root, entry, remaining);
         assert.ok(await button.evaluate((element) => document.activeElement === element), "Focus did not move to the new control");
@@ -143,6 +142,9 @@ export default async function S8(context: CheckContext) {
         await waitForState(page, "faded");
         await assertCuts(root, entry, remaining);
         await button.focus();
+        const beforeKeyboard = await context.bridge.events();
+        assert.deepEqual(beforeKeyboard.slice(cursor).filter(({ type }) => type === "recut"), firstClicks);
+        cursor = beforeKeyboard.length;
         await page.keyboard.press("Enter");
         await assertCuts(root, entry, ids);
         assert.ok(await marker.evaluate((element) => document.activeElement === element), "Focus did not move to the new control");
@@ -156,6 +158,7 @@ export default async function S8(context: CheckContext) {
         assert.equal(new Set(clicks.map(({ id }) => id)).size, clicks.length);
         await toggle(page);
         await waitForState(page, "faded");
+        await assertCuts(root, entry, ids);
         return `${scheme}: expanded and collapsed run ${group.join("/")}, ${recutDrift}px kept-sentence drift, ${clicks.length} recut events`;
       }));
     }

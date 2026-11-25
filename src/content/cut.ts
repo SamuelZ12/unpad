@@ -6,7 +6,7 @@ import { isEditing } from "./keys";
 export const markerSelector = "[data-filler-cut-marker]";
 const restoredSelector = "[data-filler-cut-restored]";
 const linkSelector = "a, [role=link]";
-const interactive = `${linkSelector}, button, [role=button]:not(${restoredSelector}), summary`;
+const interactive = `${linkSelector}, button, [role=button]:not(${restoredSelector}), summary, label`;
 const media = "img, svg, video, audio, iframe, canvas, input, select, textarea, button, hr";
 
 type Activate = (event: RunEvent, sentence: SentenceAnchor, top: number) => void;
