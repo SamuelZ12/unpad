@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fadedIds, markedIds, reduce, removedRuns, view, type PageState } from "../../src/core/state";
+import { fadedIds, markedIds, reduce, removedRuns, restoredRuns, view, type PageState } from "../../src/core/state";
 import type { CacheKey, Doc, DocKey, SentenceId } from "../../src/shared/types";
 
 const id = (n: number) => n as SentenceId;
@@ -55,4 +55,29 @@ test("marks follow the lens, can be unmarked once, and do not overlap fades", ()
   expect(fadedIds(all, doc.key)).toEqual([]);
   expect(view(all)).toBe("faded");
   expect(view(reduce(all, { type: "hold-start" }))).toBe("revealed");
+});
+
+test("recut accepts exactly one visible restored run", () => {
+  const waiting = reduce(initial, { type: "doc-found", doc });
+  const faded = reduce(waiting, {
+    type: "picks-arrived", docKey: doc.key, cacheKey: "b" as CacheKey,
+    selection: { kind: "keep", keep: [id(1), id(5)] },
+  });
+  const restore = { type: "restore", docKey: doc.key, ids: [2, 3, 4].map(id) } as const;
+  const recut = { ...restore, type: "recut" } as const;
+  const last = reduce(faded, { ...restore, ids: [id(6)] });
+  const restored = reduce(last, restore);
+  expect(restoredRuns(restored, doc.key)).toEqual([restore.ids, [id(6)]]);
+  expect(view(restored)).toBe("faded");
+  expect(reduce(restored, { ...recut, ids: [id(3)] })).toBe(restored);
+  expect(reduce(restored, { ...recut, ids: [...recut.ids, id(6)] })).toBe(restored);
+  expect(reduce(restored, { ...recut, ids: [...recut.ids].reverse() })).toBe(restored);
+  const off = reduce(restored, { type: "lens-set", on: false });
+  const holding = reduce(restored, { type: "hold-start" });
+  expect(restoredRuns(off, doc.key)).toEqual([]);
+  expect(restoredRuns(holding, doc.key)).toEqual([]);
+  expect(reduce(off, recut)).toBe(off);
+  expect(reduce(holding, recut)).toBe(holding);
+  expect(reduce(restored, recut)).toEqual(last);
+  expect(reduce(reduce(faded, restore), recut)).toEqual(faded);
 });

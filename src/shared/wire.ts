@@ -69,6 +69,7 @@ function isLogEvent(value: unknown): value is LogEvent {
         && value.faded <= value.total
         && (value.marks === undefined || (isCount(value.marks) && value.marks <= value.total - value.faded));
     case "restore":
+    case "recut":
     case "unmark":
       return isCacheKey(value.cacheKey) && isSentenceId(value.sentenceId)
         && typeof value.text === "string";
