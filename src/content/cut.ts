@@ -7,6 +7,7 @@ export const markerSelector = "[data-filler-cut-marker]";
 const restoredSelector = "[data-filler-cut-restored]";
 const linkSelector = "a, [role=link]";
 const interactive = `${linkSelector}, button, [role=button]:not(${restoredSelector}), summary, label`;
+const xPostBody = "[data-testid=tweetText]";
 const media = "img, svg, video, audio, iframe, canvas, input, select, textarea, button, hr";
 
 type Activate = (event: RunEvent, sentence: SentenceAnchor, top: number) => void;
@@ -18,6 +19,20 @@ interface ProjectedText {
   readonly original: string;
   readonly fragments: Fragment[];
   edited: boolean;
+}
+
+function* postRunSlices(block: Element, first: TextSlice, last: TextSlice): Iterable<TextSlice> {
+  // Preserve the space around a run, but remove paragraph breaks between its sentences.
+  const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  walker.currentNode = first.node;
+  for (let node = first.node; node; node = walker.nextNode() as Text) {
+    yield {
+      node,
+      start: node === first.node ? first.start : 0,
+      end: node === last.node ? last.end : node.length,
+    };
+    if (node === last.node) break;
+  }
 }
 
 export function createCut(activate: Activate) {
@@ -57,8 +72,7 @@ export function createCut(activate: Activate) {
   const projected = new Map<Text, ProjectedText>();
   const collapsed = new Set<Element>();
   const controls = new Map<HTMLElement, Run>();
-  const starts = new Map<string, HTMLElement>();
-  const runKey = ({ docKey, ids }: RunEvent) => `${docKey}:${ids[0]}`;
+  const starts = new Map<Element, Map<SentenceId, HTMLElement>>();
   let hovered: Run | undefined;
   const blocks = new Set<Element>();
   let dirty = false;
@@ -141,8 +155,12 @@ export function createCut(activate: Activate) {
     wasSelected = false;
     const run = controlRun(event.target);
     if (!run || !event.isTrusted || event.button !== 0 || isEditing(event)) return;
-    if (run.event.type === "recut" && (selecting || event.composedPath().some(
-      (target) => target instanceof Element && target.matches(interactive)))) return;
+    if (run.event.type === "recut") {
+      const { block } = run.sentence;
+      const post = block.matches(xPostBody);
+      if (selecting || event.composedPath().some((target) =>
+        target instanceof Element && target.matches(interactive) && (!post || block.contains(target)))) return;
+    }
     // Markers within inline links must handle the click before the site can follow it.
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -175,7 +193,10 @@ export function createCut(activate: Activate) {
       element.tabIndex = 0;
       element.setAttribute("role", "button");
       element.setAttribute("aria-label", element.title);
-      starts.set(runKey(run.event), element);
+      const { block } = run.sentence;
+      const byId = starts.get(block) ?? new Map<SentenceId, HTMLElement>();
+      byId.set(ids[0], element);
+      starts.set(block, byId);
     }
     run.parts.push(element);
     controls.set(element, run);
@@ -196,21 +217,26 @@ export function createCut(activate: Activate) {
           const sentence = sentences[ids[0] - 1];
           if (!sentence.slices[0].node.isConnected) continue;
           const run: Run = { event: { type, docKey, ids }, sentence, parts: [] };
-          for (const id of ids) {
-            const { block, slices } = sentences[id - 1];
+          const last = sentences[ids.at(-1)! - 1];
+          const post = sentence.block.matches(xPostBody);
+          const group = ids.map((id) => sentences[id - 1]);
+          for (const { block } of group) {
             blocks.add(block);
             if (type === "restore") foldedBlocks.add(block);
-            for (const slice of slices) {
-              if (!slice.node.isConnected) continue;
-              const link = slice.node.parentElement?.closest(linkSelector);
-              if (link && type === "restore") links.add(link);
-              const list = slicesByNode.get(slice.node) ?? [];
-              const last = list.at(-1);
-              if (last?.run === run && !slice.node.data.slice(last.end, slice.start).trim()) {
-                list[list.length - 1] = { ...last, end: slice.end };
-              } else list.push({ ...slice, run });
-              slicesByNode.set(slice.node, list);
-            }
+          }
+          const slices = post && type === "restore"
+            ? postRunSlices(sentence.block, sentence.slices[0], last.slices.at(-1)!)
+            : group.flatMap(({ slices }) => slices);
+          for (const slice of slices) {
+            if (!slice.node.isConnected || slice.start === slice.end) continue;
+            const link = slice.node.parentElement?.closest(linkSelector);
+            if (link && type === "restore" && (!post || sentence.block.contains(link))) links.add(link);
+            const list = slicesByNode.get(slice.node) ?? [];
+            const previous = list.at(-1);
+            if (previous?.run === run && !slice.node.data.slice(previous.end, slice.start).trim()) {
+              list[list.length - 1] = { ...previous, end: slice.end };
+            } else list.push({ ...slice, run });
+            slicesByNode.set(slice.node, list);
           }
         }
       }
@@ -260,7 +286,7 @@ export function createCut(activate: Activate) {
   }
 
   return {
-    control: (event: RunEvent) => starts.get(runKey(event)),
+    control: (sentence: SentenceAnchor, event: RunEvent) => starts.get(sentence.block)?.get(event.ids[0]),
     read(node: Text) {
       const source = projected.get(node);
       return source && !source.edited && node.data === "" ? source.original : node.data;

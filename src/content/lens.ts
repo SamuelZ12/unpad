@@ -1,5 +1,5 @@
-import { pageStatus, type NoContentHint, type PageStatus } from "../core/page-status";
-import { fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
+import { pageStatus, type PageStatus } from "../core/page-status";
+import { fadedIds, markedIds, reduce, view, type DocState, type PageEvent, type PageState } from "../core/state";
 import type { Doc, DocKey, SentenceId } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
 import { documentRoute, type PageSnapshot } from "../shared/page-snapshot";
@@ -17,6 +17,8 @@ import { usesGenericSurface } from "./surfaces";
 
 type Mode = "site" | "page";
 
+const recentUnmountedLimit = 128;
+
 function start() {
   const projection = createProjection((action) => {
     dispatch(action.event, action);
@@ -31,7 +33,7 @@ function start() {
 
   let state: PageState = { lensOn: false, holding: false, docs: new Map() };
   let anchoredDocs: AnchoredDoc[] = [];
-  let hint: NoContentHint | undefined;
+  let scanned = false;
   let scanError: string | undefined;
   let lastAttempt: PageStatus | undefined;
   let scanning: Promise<void> | undefined;
@@ -50,12 +52,12 @@ function start() {
     };
   }
 
-  function currentStatus(): PageStatus {
-    return scanError ? { kind: "failed", reason: scanError } : pageStatus(visibleState(), hint);
+  function currentStatus(visible: PageState = visibleState()): PageStatus {
+    return scanError ? { kind: "failed", reason: scanError } : pageStatus(visible, scanned);
   }
 
-  function snapshot(): PageSnapshot {
-    const status = mode === "site" && !connected ? undefined : mode ? currentStatus() : lastAttempt;
+  function snapshot(visible?: PageState): PageSnapshot {
+    const status = mode === "site" && !connected ? undefined : mode ? currentStatus(visible) : lastAttempt;
     return { mode, lensOn: state.lensOn, status };
   }
 
@@ -68,16 +70,16 @@ function start() {
     if (orphaned()) return;
     const control = mutate(() => projection.reconcile(anchoredDocs, state, action));
     const html = document.documentElement;
-    const current = view(visibleState());
+    const visible = visibleState();
+    const current = view(visible);
     html.dataset.fillerCutState = current;
     let fadedTotal = 0;
     let markedTotal = 0;
-    for (const { doc } of anchoredDocs) {
+    for (const { doc, picks } of visible.docs.values()) {
       const faded = fadedIds(state, doc.key).length;
       const marks = markedIds(state, doc.key).length;
       fadedTotal += faded;
       markedTotal += marks;
-      const picks = state.docs.get(doc.key)?.picks;
       const bridge = bridgeForDoc.get(doc.key);
       if (!bridge || (!faded && !marks) || picks?.kind !== "ready" || shown.has(doc.key)) continue;
       shown.add(doc.key);
@@ -88,7 +90,7 @@ function start() {
     }
     html.dataset.fillerCutFaded = String(fadedTotal);
     html.dataset.fillerCutMarked = String(markedTotal);
-    const page = snapshot();
+    const page = snapshot(visible);
     const signature = JSON.stringify([href, page, current]);
     if (signature !== lastStatus) {
       lastStatus = signature;
@@ -137,8 +139,9 @@ function start() {
     if (event.type === "restore" || event.type === "recut") logClicks(event.type, event.docKey, event.ids);
   }
 
-  async function requestPicks(doc: Doc, check: SelectRequest["check"], requestedOn: number) {
-    const isCurrent = () => requestedOn === pageView && href === location.href;
+  async function requestPicks(entry: DocState, check: SelectRequest["check"]) {
+    const { doc } = entry;
+    const isCurrent = () => state.docs.get(doc.key) === entry && href === location.href;
     try {
       // A short page gets no marks, so it keeps the fade-only cache entry.
       const { title, sentences } = doc;
@@ -176,12 +179,13 @@ function start() {
     const start = performance.now();
     const url = new URL(href);
     const check = mode === "site" && usesGenericSurface(url) ? { url: url.origin + url.pathname } : undefined;
-    const result = await extract(document, url, !!check, projection.read);
+    const docs = await extract(document, url, !!check, projection.read);
     if (!current()) return;
 
     scanError = undefined;
-    hint = result.hint;
-    anchoredDocs = result.docs.filter(({ root }) => root.isConnected);
+    scanned = true;
+    anchoredDocs = docs.filter(({ root }) => root.isConnected);
+    if (url.hostname === "x.com") retainRecentDocs();
 
     if (process.env.FILLER_CUT_DEV === "1") {
       document.documentElement.dataset.fillerCutDebug = JSON.stringify({
@@ -192,9 +196,24 @@ function start() {
     for (const { doc } of anchoredDocs) {
       if (state.docs.has(doc.key)) continue;
       state = reduce(state, { type: "doc-found", doc });
-      void requestPicks(doc, check, pageView);
+      void requestPicks(state.docs.get(doc.key)!, check);
     }
     render();
+  }
+
+  function retainRecentDocs() {
+    // Move mounted docs to the end so the oldest unmounted entries are evicted first.
+    const mounted = visibleState().docs;
+    const docs = new Map(state.docs);
+    for (const key of mounted.keys()) docs.delete(key);
+    for (const key of docs.keys()) {
+      if (docs.size <= recentUnmountedLimit) break;
+      docs.delete(key);
+      shown.delete(key);
+      bridgeForDoc.delete(key);
+    }
+    for (const [key, entry] of mounted) docs.set(key, entry);
+    state = { ...state, docs };
   }
 
   async function finishScan() {
@@ -206,7 +225,7 @@ function start() {
     pageView++;
     scanVersion++;
     anchoredDocs = [];
-    hint = undefined;
+    scanned = false;
     scanError = undefined;
     lastAttempt = attempt;
     scanning = undefined;
@@ -234,7 +253,6 @@ function start() {
       if (sameDocument) href = location.href;
       else stop();
     } else reset();
-    void scan();
   }
 
   let connected = false;
@@ -341,7 +359,7 @@ function start() {
   function pressPage() {
     if (state.lensOn) {
       // Before the first scan lands there is nothing to keep, so end the attempt.
-      if (hint === undefined) return stop();
+      if (!scanned) return stop();
       scanVersion++;
       cancelFeedback();
       toast();

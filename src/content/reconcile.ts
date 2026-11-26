@@ -7,7 +7,7 @@ type Pin = { sentence: SentenceAnchor; top: number };
 type RunAction = Pin & { event: RunEvent };
 
 function sameAnchors(a: AnchoredDoc, b: AnchoredDoc) {
-  return a.root === b.root && a.doc.key === b.doc.key &&
+  return a === b || a.root === b.root && a.doc.key === b.doc.key &&
     a.sentences.every(({ block, slices }, i) => {
       const other = b.sentences[i];
       return block === other.block && slices.length === other.slices.length &&
@@ -64,7 +64,7 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
         }
         cut.clear();
         cut.apply(next);
-        const control = action && cut.control(action.event);
+        const control = action && cut.control(action.sentence, action.event);
         if (pin) {
           const rect = firstRect(pin.sentence, cut.locate) ??
             (pin === action ? control?.getBoundingClientRect() : undefined);
@@ -83,7 +83,7 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
         if (ranges.length) (paintMarks ??= createMarkPainter())(ranges);
         else paintMarks?.([]);
       }
-      return changed && action ? cut.control(action.event) : undefined;
+      return changed && action ? cut.control(action.sentence, action.event) : undefined;
     },
   };
 }

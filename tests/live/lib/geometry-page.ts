@@ -20,7 +20,7 @@ declare global {
 }
 
 window.fillerCutGeometry = async () => {
-  const [anchored] = (await extract(document, new URL(location.href))).docs;
+  const [anchored] = await extract(document, new URL(location.href));
   if (!anchored) return;
   const { doc, root, sentences } = anchored;
   const ranges = sentences.map((sentence) => rangeOf(sentence)!);

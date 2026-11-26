@@ -1,4 +1,3 @@
-import type { NoContentHint } from "../core/page-status";
 import { segment } from "../core/segment";
 import { MAX_SENTENCES, MIN_SENTENCES } from "../shared/config";
 import { docKey } from "../shared/keys";
@@ -34,7 +33,7 @@ export function rangeOf({ slices }: SentenceAnchor, locate: LocateText = (slice)
   return range;
 }
 
-function anchor(block: Element, generic: boolean, read: ReadText) {
+function readBlock(block: Element, generic: boolean, read: ReadText) {
   const walker = textWalker(block, generic);
   const nodes: { node: Text; offset: number; length: number }[] = [];
   let text = "";
@@ -49,6 +48,10 @@ function anchor(block: Element, generic: boolean, read: ReadText) {
     text += generic ? data.replace(/[\n\r\f]/gu, " ") : data;
   }
 
+  return { text, nodes };
+}
+
+function anchor(block: Element, { nodes, text }: ReturnType<typeof readBlock>) {
   let cursor = 0;
   return segment(text).map(({ start, end, text }) => {
     while (nodes[cursor + 1]?.offset <= start) cursor++;
@@ -64,17 +67,37 @@ function anchor(block: Element, generic: boolean, read: ReadText) {
   });
 }
 
-export async function extract(
-  document: Document, url: URL, checkArticle = false, read: ReadText = (node) => node.data,
-): Promise<{ docs: AnchoredDoc[]; hint: NoContentHint }> {
-  const surface = surfaces(document, url, checkArticle, read);
-  if (surface.kind === "x-other-route") return { docs: [], hint: "open-post" };
-  const docs = surface.docs.map(async ({ root, surface, title, blocks, generic }) => {
-    const spans = blocks.flatMap((block) => anchor(block, !!generic, read));
-    if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
-    const sentences = spans.map(({ text }) => text);
-    const key = await docKey(title, sentences);
-    return { root, doc: { key, surface, title, sentences }, sentences: spans.map(({ sentence }) => sentence) };
-  });
-  return { docs: (await Promise.all(docs)).filter((doc): doc is NonNullable<typeof doc> => !!doc), hint: "none" };
+export function createExtractor() {
+  const posts = new WeakMap<Element, {
+    source: ReturnType<typeof readBlock>;
+    result: Promise<AnchoredDoc | undefined>;
+  }>();
+
+  return async function extract(
+    document: Document, url: URL, checkArticle = false, read: ReadText = (node) => node.data,
+  ): Promise<AnchoredDoc[]> {
+    const docs = surfaces(document, url, checkArticle, read).map(({ root, surface, title, blocks, generic }) => {
+      async function build(spans: ReturnType<typeof anchor>): Promise<AnchoredDoc | undefined> {
+        if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
+        const sentences = spans.map(({ text }) => text);
+        const key = await docKey(title, sentences);
+        return { root, doc: { key, surface, title, sentences }, sentences: spans.map(({ sentence }) => sentence) };
+      }
+
+      if (surface !== "x-post") return build(blocks.flatMap((block) => anchor(block, readBlock(block, !!generic, read))));
+      const source = readBlock(root, false, read);
+      const previous = posts.get(root);
+      if (previous && source.text === previous.source.text && source.nodes.length === previous.source.nodes.length &&
+        source.nodes.every(({ node, length }, i) => node === previous.source.nodes[i].node && length === previous.source.nodes[i].length)) {
+        return previous.result;
+      }
+      const result = build(anchor(root, source));
+      posts.set(root, { source, result });
+      void result.catch(() => { if (posts.get(root)?.result === result) posts.delete(root); });
+      return result;
+    });
+    return (await Promise.all(docs)).filter((doc): doc is AnchoredDoc => !!doc);
+  };
 }
+
+export const extract = createExtractor();

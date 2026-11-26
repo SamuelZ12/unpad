@@ -34,9 +34,10 @@ import picks from "./picks";
 import S19 from "./S19";
 import S20 from "./S20";
 import S21 from "./S21";
+import S22 from "./S22";
 
 const checks = { load, extract, picks, S3, S1, S4, S2, S6, S16, S5, S7, S14, S8, S9, S15, S10, S11, S12,
-  "S12-page-mode": S12PageMode, "S12-added-site": S12AddedSite, "S12-page-check": S12PageCheck, S13, S17, S18, S19, S20, S21 };
+  "S12-page-mode": S12PageMode, "S12-added-site": S12AddedSite, "S12-page-check": S12PageCheck, S13, S17, S18, S19, S20, S21, S22 };
 const args = Bun.argv.slice(2);
 const modeFlag = args.find((arg) => arg.startsWith("--mode="));
 const mode = (modeFlag?.slice(7) ?? "logged-out") as Mode;
@@ -65,7 +66,7 @@ async function runChecks() {
   const profileMode = (id: string): Mode => {
     if (id.startsWith("S12") || id === "S19" || id === "S21" ||
       (mode === "logged-in" && ["S4", "S14", "S15", "S16", "S18"].includes(id))) return "logged-out";
-    if (id === "S20" || (id === "S10" && mode === "logged-out")) return "replay";
+    if (id === "S20" || id === "S22" || (id === "S10" && mode === "logged-out")) return "replay";
     return mode;
   };
   let accountError: unknown;

@@ -4,7 +4,7 @@ import { collapse } from "../../src/core/segment";
 import { roots, urls } from "./lib/browser";
 import { atMost, waitForState, withBrowser } from "./lib/check";
 import { assertCuts, captureDomErrors, referenceCut, withBridge } from "./lib/cut";
-import { save, screenshot } from "./lib/pixels";
+import { poll, save, screenshot } from "./lib/pixels";
 import { replayNavigation } from "./lib/replay";
 import type { CheckContext } from "./run";
 
@@ -43,7 +43,7 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
     .waitFor({ state: "attached", timeout: 6000 });
   await page.waitForFunction(() => !!document.documentElement.dataset.fillerCutState);
   assert.equal(await page.locator(roots.wang).count(), 0, "Wang still present on another status");
-  assert.equal(await page.locator("[data-filler-cut-marker]").count(), 0);
+  if (context.mode !== "logged-in") assert.equal(await page.locator("[data-filler-cut-marker]").count(), 0);
   await save(context.evidence + "/second-status", (await screenshot(page)).png);
 
   const cursor = (await context.bridge.requests()).length;
@@ -54,9 +54,9 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
   const appeared = Date.now();
   await waitForState(page, "faded");
   const elapsed = Date.now() - appeared;
-  const row = await context.bridge.waitForRequest(cursor);
-  assert.equal(row.source, "cache");
-  assert.equal(row.cacheKey, wang.row.cacheKey);
+  const row = await poll(async () => (await context.bridge.requests()).slice(cursor).find(
+    ({ cacheKey }) => cacheKey === wang.row.cacheKey), Boolean, 5000);
+  assert.equal(row?.source, "cache");
   await assertCuts(wang.root, wang.entry);
   const back = await documentId();
   if (context.mode !== "logged-out") assert.ok(before === second && back === second, "X navigation replaced the document");

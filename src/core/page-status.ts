@@ -1,16 +1,13 @@
 import { candidates, marks, type PageState } from "./state";
 
-export type NoContentHint = "open-post" | "none";
-
 export type PageStatus =
-  | { kind: "no-content"; hint: NoContentHint }
   | { kind: "reading" }
   | { kind: "cut"; lensOn: boolean; removed: number; marks: number }
   | { kind: "nothing-to-cut" }
   | { kind: "failed"; reason: string };
 
-export function pageStatus(state: PageState, hint: NoContentHint | undefined): PageStatus {
-  if (!state.docs.size) return hint === undefined ? { kind: "reading" } : { kind: "no-content", hint };
+export function pageStatus(state: PageState, scanned: boolean): PageStatus {
+  if (!scanned) return { kind: "reading" };
   let removed = 0;
   let marked = 0;
   let expanded = false;

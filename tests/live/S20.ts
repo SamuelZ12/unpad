@@ -60,7 +60,8 @@ export default async function S20(context: CheckContext) {
       await page.locator("html[data-filler-cut-debug]").waitFor({ state: "attached" });
       assert.equal(await toast(page).count(), 0);
       await toggle(page);
-      await toast(page).getByText("Open a post or article to cut it.").waitFor({ timeout: 3000 });
+      await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
+      assert.equal(await toast(page).innerText(), "Nothing to cut here");
       await page.screenshot({ path: context.evidence + "/x-home-toast.png" });
       assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
       await page.route("https://x.com/example/status/1", (route) => route.fulfill({
@@ -89,12 +90,13 @@ export default async function S20(context: CheckContext) {
       await page.goto(xHomeUrl);
       await waitForState(page, "idle");
       await action.withPopup(page, async (popup) => {
-        await captures(popup, context.evidence + "/x-home", "Nothing to cut here. Open a post or article to cut it.");
+        await captures(popup, context.evidence + "/x-home", "Nothing to cut here");
         const builtIn = popup.getByRole("checkbox", { name: "Always run on x.com built in" });
         assert.equal(await builtIn.isChecked(), true);
         assert.equal(await builtIn.isDisabled(), true);
         await popup.getByRole("switch").click();
-        await toast(page).getByText("Open a post or article to cut it.").waitFor({ timeout: 3000 });
+        await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
+        assert.equal(await toast(page).innerText(), "Nothing to cut here");
       });
       assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), {});
 
@@ -105,6 +107,7 @@ export default async function S20(context: CheckContext) {
         const toggle = popup.getByRole("switch");
         await toggle.click();
         await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
+        assert.equal(await toast(page).innerText(), "Nothing to cut here");
         await popup.getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
         assert.equal(await toggle.getAttribute("aria-checked"), "false");
         const snapshot = await popup.evaluate(async () => {
@@ -151,6 +154,6 @@ export default async function S20(context: CheckContext) {
       });
       assert.equal((await waitForState(page, "faded", 5000)).faded, faded);
     }, "replay");
-    return "X home page-key fallback and popup switch show the post hint, short post shows the plain toast, lens unchanged and zero selects; one-shot blank page ends; popup checkbox adds and removes a routed site; four native popup states captured in light and dark; after an extension reload the switch restarts the open tab with the lens on";
+    return "presses on empty X home and a short status show the plain toast with lens unchanged and zero selects; one-shot blank page ends; popup checkbox adds and removes a routed site; four native popup states captured in light and dark; after an extension reload the switch restarts the open tab with the lens on";
   });
 }

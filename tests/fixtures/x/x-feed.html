@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark }
+  body { margin: 0; font: 15px/1.35 system-ui; color: CanvasText; background: Canvas }
+  main { max-width: 600px; margin: auto; border-inline: 1px solid color-mix(in srgb, currentColor 15%, transparent) }
+  article { padding: 14px 16px; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); cursor: pointer }
+  header { margin-bottom: 4px }
+  a, [data-testid=tweet-text-show-more-link] { color: #1d9bf0; text-decoration: none }
+  [data-testid=tweetText] { white-space: pre-wrap; overflow-wrap: anywhere }
+  [data-testid=tweetText] div { display: inline }
+  [role=link] { margin-top: 8px; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 16px; padding: 12px }
+  button { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; cursor: pointer }
+  footer { display: flex; gap: 30px; margin-top: 10px; color: color-mix(in srgb, currentColor 65%, transparent) }
+</style>
+<main>
+  <div data-testid="cellInnerDiv" id="long">
+    <article data-testid="tweet">
+      <header><strong>Patrick Collison</strong> @patrickc · <a href="/patrickc/status/2126035198571946229"><time>Nov 26</time></a></header>
+      <div><div dir="auto" lang="en" data-testid="tweetText"><span>Thanksgiving morning project in honor of the World Chess Championship:&#32;
+</span><a dir="ltr" href="https://t.co/0odPNFYG7g"><span>https://</span>humanfish.vercel.app/methodology</a><span>.
+
+I’ve long wanted a human eval bar for chess games. HumanFish predicts game outcomes while taking into account clock time, player ELO, move obviousness, narrowness of the subsequent</span></div><button data-testid="tweet-text-show-more-link" type="button">Show more</button></div>
+      <footer><button data-testid="reply">Reply</button><button data-testid="like">Like</button></footer>
+    </article>
+  </div>
+  <div data-testid="cellInnerDiv" id="short">
+    <article data-testid="tweet">
+      <header><strong>@dakdevs</strong></header>
+      <div dir="auto" lang="en" data-testid="tweetText"><span>never leaving this app (the last message killed me 🤣)</span></div>
+    </article>
+  </div>
+</main>
+<template id="expanded"><span>Thanksgiving morning project in honor of the World Chess Championship:&#32;
+</span><a dir="ltr" href="https://t.co/EI6ZxNniiM"><span>http://</span>humanfish.vercel.app/methodology</a><span>.
+
+I’ve long wanted a human eval bar for chess games. HumanFish predicts game outcomes while taking into account clock time, player ELO, move obviousness, narrowness of the subsequent path, etc. This attempt seems to provide somewhat meaningful improvement over the standard broadcast eval bar.
+
+Building it was also a chance to test Gemini 4 Neon for a few hours, which was very easy thanks to </span><div><span><a dir="ltr" href="/OpenRouter">@OpenRouter</a></span></div><span>. (It worked well!) Full code at the link — would be excited to see others adopt/improve/build on this.
+
+(Thanks also to </span><div><span><a dir="ltr" href="/vercel">@vercel</a></span></div><span> and Stripe Projects. I didn’t have to leave the CLI at any point.)</span></template>
+<template id="quoted">
+  <div data-testid="cellInnerDiv" id="quote">
+    <article data-testid="tweet">
+      <header><strong>@victorgu0</strong></header>
+      <div dir="auto" lang="en" data-testid="tweetText"><span>it took just one video for me to be #13 😮‍💨</span></div>
+      <div role="link" tabindex="0">
+        <header><strong>Ted</strong> @notmiramurati</header>
+        <div dir="auto" lang="en" data-testid="tweetText"><span>who's growing fast as f*ck on X?
+
+we've analyzed 3,000+ accounts over the past 30 days
+
+meet </span><span dir="ltr"><span>https://</span>grow.af</span><span>
+
+1. compete on the growth leaderboard
+2. discover the content formats behind their growth
+3. check where do you rank &amp; join the the race!</span></div>
+      </div>
+    </article>
+  </div>
+</template>
+<script>
+  const longCell = document.querySelector("#long");
+  const postBody = longCell.querySelector("[data-testid=tweetText]");
+  const postUrl = longCell.querySelector("header a").href;
+  const expanded = document.querySelector("#expanded");
+  function openPost(event, url) {
+    if (!event.target.closest("a, button")) window.open(url);
+  }
+  function wireLong(cell) {
+    cell.querySelector("article").addEventListener("click", (event) => openPost(event, postUrl));
+    for (const button of cell.querySelectorAll("footer button")) {
+      button.addEventListener("click", () => button.setAttribute("aria-pressed", "true"));
+    }
+  }
+  wireLong(longCell);
+  longCell.querySelector("[data-testid=tweet-text-show-more-link]").onclick = (event) => {
+    postBody.replaceChildren(expanded.content.cloneNode(true));
+    event.target.remove();
+  };
+  function rebuildLong() {
+    const cell = longCell.cloneNode(true);
+    cell.querySelector("[data-testid=tweetText]").replaceChildren(expanded.content.cloneNode(true));
+    wireLong(cell);
+    document.querySelector("main").prepend(cell);
+  }
+  function mountQuote() {
+    const cell = document.querySelector("#quoted").content.cloneNode(true);
+    cell.querySelector("[role=link]").addEventListener("click", (event) =>
+      openPost(event, "/notmiramurati/status/2125700831756300653"));
+    document.querySelector("main").append(cell);
+  }
+</script>

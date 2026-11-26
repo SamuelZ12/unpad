@@ -23,14 +23,14 @@ const fixtures = {
   perfloop: "x-loggedin-post-perfloop.html",
 };
 
-export async function fixture(name: Exclude<Reference, "warp">, home = false) {
+export async function fixture(name: Exclude<Reference, "warp">) {
   const article = await Bun.file("tests/fixtures/x/" + fixtures[name]).text();
   return `<!doctype html><meta charset=utf-8><style>
     body { font: 17px/1.5 system-ui; margin: 24px auto; width: 620px; color: #e7e9ea; background: #000 }
     img, svg, video, button { display: none } [data-block] { margin: 12px 0 }
     [data-testid=tweetText] { white-space: pre-wrap }
     [data-testid=twitter-article-title] { font-size: 28px; font-weight: bold }
-  </style>${home ? "<header><h1>Home</h1></header>" : ""}<main><div data-testid=cellInnerDiv>${article}</div></main>`;
+  </style><main><div data-testid=cellInnerDiv>${article}</div></main>`;
 }
 
 export async function launch(
@@ -68,8 +68,7 @@ export async function launch(
         if (route.request().resourceType() !== "document") return route.abort();
         const url = route.request().url();
         const name = url === urls.wang ? "wang" : "perfloop";
-        const home = new URL(url).pathname === new URL(xHomeUrl).pathname;
-        const body = await fixture(name, home);
+        const body = url === xHomeUrl ? "<!doctype html><main><h1>Home</h1></main>" : await fixture(name);
         await route.fulfill({ contentType: "text/html", body });
       });
     }
