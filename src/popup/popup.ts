@@ -69,13 +69,14 @@ async function refresh(id: number) {
   const connected = !!connection?.engine;
   const usage = connected && connection.issue === issue.usage;
   const signedOut = connected && (connection.issue === issue.signedOut || connection.issue === issue.denied);
-  connect.hidden = connected && !signedOut;
-  connect.textContent = signedOut ? "Sign in again" : "Set up";
+  const keyRejected = connection?.engine?.kind === "key" && connection.issue === issue.invalidKey;
+  connect.hidden = connected && !signedOut && !keyRejected;
+  connect.textContent = signedOut ? "Sign in again" : keyRejected ? "Replace API key" : "Set up";
   manage.hidden = !usage;
   settingsLink.hidden = !connected;
-  enabledSites.hidden = change.hidden = !connected || usage || signedOut;
+  enabledSites.hidden = change.hidden = !connected || usage || signedOut || keyRejected;
   shortcut.hidden = change.hidden || !shortcutLabel;
-  if (!connected || usage || signedOut) {
+  if (!connected || usage || signedOut || keyRejected) {
     lens.hidden = setting.hidden = true;
     status.textContent = connected ? connection.issue : "Connect to start cutting pages.";
     return;

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import manifest from "../src/manifest.json";
 
@@ -15,6 +15,7 @@ try {
     env: { ...env, FILLER_CUT_OUTDIR: extension }, stdout: "inherit", stderr: "inherit",
   });
   if (await build.exited) throw new Error("Extension build failed");
+  await copyFile("LICENSE", resolve(extension, "LICENSE"));
   const zip = Bun.spawn(["zip", "-q", "-r", archive, "."], { cwd: extension, stderr: "inherit" });
   if (await zip.exited) throw new Error("Could not create extension zip");
   await rename(archive, output);

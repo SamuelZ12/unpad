@@ -20,8 +20,7 @@ export function createSettings(trusted: Promise<unknown>) {
   };
 
   async function setEngine(engine: Engine | null) {
-    const { engine: current } = await readPreferences();
-    const revoked = current?.kind !== "chatgpt" || await disconnectChatGPT();
+    const revoked = await disconnectChatGPT();
     await chrome.storage.session.remove("selectionIssue");
     await chrome.storage.local.set({ engine });
     return revoked ? {} : { error: "Signed out here. Disconnect the app in ChatGPT settings to finish." };

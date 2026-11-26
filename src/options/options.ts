@@ -19,6 +19,7 @@ byId<HTMLAnchorElement>("try-link").href = DEMO_ARTICLE;
 let keyPath = false;
 let busy = false;
 let activeEngine: PublicEngine | undefined;
+let keyRejected = false;
 let accountShown = "";
 
 function problem(message?: string) {
@@ -27,7 +28,8 @@ function problem(message?: string) {
 }
 
 function showPath() {
-  byId("key-form").hidden = !keyPath || !!activeEngine;
+  byId("key-form").hidden = !keyPath || (!!activeEngine && !keyRejected);
+  byId("replace-key").hidden = !keyRejected || keyPath;
   byId("choose").hidden = keyPath || !!activeEngine;
   if (keyPath) key.focus();
 }
@@ -40,13 +42,14 @@ async function refresh(updateForm = true) {
     assignedShortcut(),
   ]);
   activeEngine = engine;
+  keyRejected = engine?.kind === "key" && error === issue.invalidKey;
   const usingPlan = engine?.kind === "chatgpt";
   const needsSignIn = usingPlan && (error === issue.signedOut || error === issue.denied);
   const usageLimit = usingPlan && error === issue.usage;
   const selected = savedAccounts.find(({ clientId }: { clientId: string }) => clientId === account);
   byId("connect").hidden = false;
   byId("advanced").hidden = false;
-  byId("try").hidden = !engine || usageLimit || needsSignIn;
+  byId("try").hidden = !engine || usageLimit || needsSignIn || keyRejected;
   byId("personalize").hidden = !engine || engine.kind === "bridge";
   byId("connected").hidden = !engine;
   byId("usage-primary").hidden = !usageLimit;
@@ -111,7 +114,7 @@ async function perform(action: string, value?: string, origins?: string[]) {
 
 byId("usage-primary").onclick = () => { void chrome.runtime.sendMessage({ type: "manage-usage" }); };
 byId("chatgpt").onclick = () => void perform("chatgpt", accounts.value, chatgptOrigins);
-byId("key-path").onclick = () => { keyPath = true; showPath(); };
+byId("replace-key").onclick = byId("key-path").onclick = () => { keyPath = true; showPath(); };
 byId("back").onclick = () => { keyPath = false; key.value = ""; key.dispatchEvent(new Event("input")); showPath(); };
 byId("disconnect").onclick = () => void perform("disconnect");
 byId("shortcuts").onclick = () => void chrome.tabs.create({ url: SHORTCUT_SETTINGS });

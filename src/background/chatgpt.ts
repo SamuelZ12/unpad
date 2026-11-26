@@ -238,7 +238,11 @@ export function chatGPTAccess(rejected?: string): Promise<string> {
 
 export function disconnectChatGPT() {
   return serialize(async () => {
-    if (await pendingAttempt()) await clearAttempt();
+    const attempt = await pendingAttempt();
+    if (attempt) {
+      await clearAttempt();
+      await chrome.tabs.remove(attempt.tabId).catch(() => {});
+    }
     const session = await currentChatGPTSession();
     await chrome.storage.session.remove("chatgptAccess");
     let revoked = !session;
