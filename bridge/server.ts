@@ -108,7 +108,7 @@ export async function startBridge(config: BridgeConfig, spawn?: PiSpawn) {
             return Response.json(picks);
           } catch (error) {
             if (error instanceof InvalidSelection) {
-              return fail(502, `Pi returned an invalid selection twice: ${JSON.stringify(error.raw.slice(0, 300))}`);
+              return fail(502, "Pi returned an invalid selection twice");
             }
             return fail(502, error instanceof Error ? error.message : "Selection failed");
           }

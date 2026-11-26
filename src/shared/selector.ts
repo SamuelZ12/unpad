@@ -99,11 +99,11 @@ export async function select(
     const selection = parseSelection(raw, doc.sentences.length, !!doc.check);
     if (selection) return { selection, raw };
   }
-  throw new InvalidSelection(raw);
+  throw new InvalidSelection();
 }
 
 export class InvalidSelection extends Error {
-  constructor(readonly raw: string) {
+  constructor() {
     super("Model returned an invalid selection twice");
   }
 }

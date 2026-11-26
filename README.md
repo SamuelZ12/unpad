@@ -43,7 +43,7 @@ bun run bridge
 
 In extension settings, open **Advanced** and enter `http://127.0.0.1:18931` under **Bridge URL**. Use HTTPS for a bridge on another device. The bridge keeps its cache and logs under `~/.pi/agent/filler-cut/data` by default. Set `FILLER_CUT_DATA` to choose a different directory or `FILLER_CUT_RULES` to supply a reader notes file.
 
-On macOS, run `scripts/bridge-service.sh install` to start the bridge at login. To reach it from another device over Tailscale, add `--tailnet` to the install command.
+On macOS, run `scripts/bridge-service.sh install` to start the bridge at login. To reach it from another device over Tailscale, add `--tailnet` to the install command. Use Tailscale access rules to limit who can reach this port. Clients that reach it can send requests to Pi.
 
 For a build with a preset connection, set `BRIDGE_URL` to its origin when you run the build.
 

@@ -274,6 +274,7 @@ export function disconnectChatGPT() {
 }
 
 export async function chatGPTModels() {
+  if (!await chrome.permissions.contains({ origins: [hostPermission(resource)] })) throw new Error(issue.permission);
   const catalog = (token: string) => connectionFetch(resource + "/models", {
     headers: { authorization: `Bearer ${token}` },
   });

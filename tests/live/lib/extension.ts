@@ -1,7 +1,9 @@
 import type { BrowserContext, Page } from "playwright";
 
 export async function extensionWorker(context: BrowserContext) {
-  return context.serviceWorkers()[0] ?? context.waitForEvent("serviceworker", { timeout: 5000 });
+  const isExtension = (worker: import("playwright").Worker) => worker.url().startsWith("chrome-extension://");
+  return context.serviceWorkers().find(isExtension) ??
+    context.waitForEvent("serviceworker", { predicate: isExtension, timeout: 5000 });
 }
 
 export async function extensionId(context: BrowserContext) {

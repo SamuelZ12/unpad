@@ -1,3 +1,5 @@
+if (window.top !== window) throw new Error("Sign-in requires a browser tab");
+
 const query = location.hash.slice(1);
 history.replaceState(null, "", location.pathname);
 const settings = chrome.runtime.getURL("options.html");

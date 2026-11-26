@@ -133,7 +133,7 @@ if (typeof chrome !== "undefined") {
         return true;
       }
     }
-    if (sender.url?.split("#", 1)[0] === callbackUrl && sender.tab?.id !== undefined &&
+    if (sender.url?.split("#", 1)[0] === callbackUrl && (sender.frameId === undefined || sender.frameId === 0) && sender.tab?.id !== undefined &&
         message?.type === "chatgpt-callback" && typeof message.query === "string") {
       void settings.callback(sender.tab.id, message.query).then(reply, () => reply({ error: issue.auth }));
       return true;

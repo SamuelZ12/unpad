@@ -14,9 +14,13 @@ export function createSettings(trusted: Promise<unknown>) {
   const status = async () => {
     const { engine, about } = await readPreferences();
     const chatgptSession = await currentChatGPTSession();
-    const { selectionIssue } = await chrome.storage.session.get("selectionIssue");
+    const { selectionIssue, issueAt, chatgptAccess } = await chrome.storage.session.get(["selectionIssue", "issueAt", "chatgptAccess"]);
+    const signedOut = engine?.kind === "chatgpt" && !chatgptSession &&
+      !(process.env.FILLER_CUT_DEV === "1" && chatgptAccess);
+    const usageExpired = selectionIssue === issue.usage && typeof issueAt === "number" && Date.now() - issueAt >= 60_000;
+    const error = signedOut ? issue.signedOut : usageExpired ? undefined : selectionIssue as string | undefined;
     const accounts = (await savedAccounts()).map(({ clientId, email }) => ({ clientId, email }));
-    return { engine: publicEngine(engine), about, accounts, account: chatgptSession?.clientId, issue: selectionIssue as string | undefined };
+    return { engine: publicEngine(engine), about, accounts, account: chatgptSession?.clientId, issue: error };
   };
 
   async function setEngine(engine: Engine | null) {
@@ -64,7 +68,7 @@ export function createSettings(trusted: Promise<unknown>) {
           case "model":
             if (engine && engine.kind !== "bridge" && typeof value === "string" && /^[a-zA-Z0-9_./:-]{1,150}$/.test(value)) {
               const { selectionIssue } = await chrome.storage.session.get("selectionIssue");
-              if (selectionIssue !== issue.usage && selectionIssue !== issue.signedOut) {
+              if (selectionIssue === issue.model || selectionIssue === issue.reply || selectionIssue === issue.failed) {
                 await chrome.storage.session.remove("selectionIssue");
               }
               await chrome.storage.local.set({ engine: { ...engine, model: value } });

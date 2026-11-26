@@ -311,12 +311,14 @@ function start() {
 
   async function pressSite(url: string) {
     const requestedOn = pageView;
+    const current = () => mode === "site" && pageView === requestedOn && documentRoute(location.href) === documentRoute(url);
     if (!connected) await readSitePreferences();
     if (!connected) {
       toast({ title: issue.offline });
       return false;
     }
     await finishScan();
+    if (!current()) return false;
     const docs = new Map(state.docs);
     for (const [key, entry] of docs) {
       if (entry.picks.kind !== "failed") continue;
@@ -326,7 +328,6 @@ function start() {
     state = { ...state, docs };
     await scan();
     await finishScan();
-    const current = () => mode === "site" && pageView === requestedOn && documentRoute(location.href) === documentRoute(url);
     if (!current() || hasFocusedEditor()) return false;
     let status: PageStatus | undefined = currentStatus();
     feedback(status);
@@ -372,6 +373,7 @@ function start() {
     navigate();
     if (mode === "site") return;
     mode = "site";
+    connected = false;
     reset();
     void readSitePreferences();
   };

@@ -87,23 +87,40 @@ xml() {
   printf '%s' "$1" | sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
 }
 
+has_legacy_or_tailnet_job() {
+  [ -f "$plist" ] || return 1
+  local mode
+  mode=$(plutil -extract EnvironmentVariables.FILLER_CUT_TAILNET raw -o - "$plist" 2>/dev/null || true)
+  [ "$mode" != "false" ]
+}
+
 install() {
   # The service runs a checkout of its own, so edits in the working repo never reach a restart.
   if $tailnet; then
     check_serve
-  elif command -v tailscale >/dev/null && served; then
-    echo "The bridge already has a tailnet route. Use install --tailnet to keep it, or remove it with tailscale serve --https=$port off." >&2
+  elif command -v tailscale >/dev/null && backend=$(serve_backend); then
+    if [ "$backend" = "http://127.0.0.1:$port" ]; then
+      echo "The bridge already has a tailnet route. Use install --tailnet to keep it, or remove it with tailscale serve --https=$port off." >&2
+      return 1
+    fi
+  elif has_legacy_or_tailnet_job; then
+    echo "Could not check your existing bridge's tailnet route. Start Tailscale and try again." >&2
     return 1
   fi
   bun_path=$(command -v bun || true)
   pi_path=$(command -v pi || true)
-  service_path="$(dirname "$pi_path"):$HOME/.pi/agent/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+  node_path=$(command -v node || true)
+  service_path="$(dirname "$pi_path")${node_path:+:${node_path%/*}}:$HOME/.pi/agent/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
   for tool in "$bun_path" "$pi_path"; do
     if [ ! -x "$tool" ]; then
       echo "Bun and Pi must both be on PATH" >&2
       return 1
     fi
   done
+  if ! PATH="$service_path" "$pi_path" --version >/dev/null; then
+    echo "Pi could not run with the service PATH." >&2
+    return 1
+  fi
   commit=$(git -C "$repo" rev-parse HEAD)
   if [ -e "$live" ]; then
     if ! git -C "$repo" worktree list --porcelain | grep -qx "worktree $live"; then
@@ -137,6 +154,7 @@ install() {
 		<key>HOME</key><string>$(xml "$HOME")</string>
 		<key>PATH</key><string>$(xml "$service_path")</string>
 		<key>PORT</key><string>$port</string>
+		<key>FILLER_CUT_TAILNET</key><string>$tailnet</string>
 	</dict>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
@@ -163,16 +181,17 @@ PLIST
 }
 
 uninstall() {
-  if loaded; then launchctl bootout "$domain/$label"; fi
-  wait_unloaded
-  rm -f "$plist"
   if command -v tailscale >/dev/null && backend=$(serve_backend); then
     if [ "$backend" = "http://127.0.0.1:$port" ]; then
       tailscale serve --https="$port" off >/dev/null
     fi
-  else
-    echo "Could not check the optional tailnet route on port $port." >&2
+  elif has_legacy_or_tailnet_job; then
+    echo "Could not verify removal of the existing tailnet route. Start Tailscale and try again." >&2
+    return 1
   fi
+  if loaded; then launchctl bootout "$domain/$label"; fi
+  wait_unloaded
+  rm -f "$plist"
   if [ -d "$live" ]; then
     git -C "$repo" worktree remove "$live"
   fi

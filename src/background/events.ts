@@ -1,4 +1,4 @@
-import { initialEngine, readPreferences } from "./preferences";
+import { readPreferences } from "./preferences";
 import { hostPermission } from "../shared/connection";
 import type { LogEvent } from "../shared/types";
 import { parseEventsRequest, parseEventsResponse } from "../shared/wire";
@@ -23,7 +23,8 @@ export function enqueueEvents(queue: EventQueue) {
 }
 
 export function chromeEventQueue(url: string) {
-  const storageKey = initialEngine?.kind === "bridge" && url === initialEngine.url ? "pendingEvents" : `pendingEvents:${url}`;
+  // Older builds did not record a destination for their pendingEvents queue.
+  const storageKey = `pendingEvents:${url}`;
   // Persist before posting because Chrome may stop the worker between events.
   return enqueueEvents({
     async load() {
@@ -31,7 +32,8 @@ export function chromeEventQueue(url: string) {
       return parseEventsRequest({ events: pendingEvents })?.events ?? [];
     },
     async save(pendingEvents) {
-      await chrome.storage.local.set({ [storageKey]: pendingEvents });
+      if (pendingEvents.length) await chrome.storage.local.set({ [storageKey]: pendingEvents });
+      else await chrome.storage.local.remove(storageKey);
     },
     async post(events) {
       try {
