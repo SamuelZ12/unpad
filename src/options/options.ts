@@ -1,6 +1,6 @@
 import { chatgptOrigins } from "../background/chatgpt";
 import { providers, recognizeKey } from "../background/providers";
-import { bridgeAddress, DEMO_ARTICLE, hostPermission, issue, type PublicEngine } from "../shared/connection";
+import { bridgeAddress, bridgeAddressHelp, CHATGPT_USAGE, DEMO_ARTICLE, hostPermission, issue, type PublicEngine } from "../shared/connection";
 import { assignedShortcut, SHORTCUT_SETTINGS } from "../shared/shortcut";
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -15,6 +15,8 @@ const name = chrome.runtime.getManifest().name;
 document.title = name;
 byId("name").textContent = name;
 byId<HTMLAnchorElement>("try-link").href = DEMO_ARTICLE;
+for (const id of ["usage", "usage-primary"]) byId<HTMLAnchorElement>(id).href = CHATGPT_USAGE;
+byId<HTMLAnchorElement>("get-key").href = providers.gemini.keysUrl;
 
 let keyPath = false;
 let busy = false;
@@ -23,6 +25,7 @@ let keyRejected = false;
 let accountShown = "";
 
 function problem(message?: string) {
+  if (message) byId("connect").hidden = false;
   byId("problem").textContent = message ?? "";
   byId("problem").hidden = !message;
 }
@@ -80,7 +83,7 @@ async function refresh(updateForm = true) {
   byId("try-copy").textContent = shortcut
     ? `Press ${shortcut} on the article. Select a ··· marker to show the original text.`
     : "Open the extension on the article and turn on cuts. You can also assign a keyboard shortcut.";
-  if (error || updateForm) problem(error);
+  problem(error);
 }
 
 async function perform(action: string, value?: string, origins?: string[]) {
@@ -99,6 +102,7 @@ async function perform(action: string, value?: string, origins?: string[]) {
     if (!result?.error && (action === "key" || action === "disconnect")) {
       keyPath = false;
       key.value = "";
+      key.dispatchEvent(new Event("input"));
     }
     if (action !== "chatgpt" || result?.error) await refresh(action !== "about");
     if (result?.error) problem(result.error);
@@ -127,7 +131,7 @@ key.oninput = () => {
     : value ? "This key format wasn’t recognized."
     : "Supports Anthropic, OpenAI, Google Gemini, and OpenRouter.";
   const link = byId<HTMLAnchorElement>("get-key");
-  link.href = id ? providers[id].keysUrl : "https://aistudio.google.com/apikey";
+  link.href = providers[id ?? "gemini"].keysUrl;
   link.textContent = id && id !== "gemini" ? `Manage ${providers[id].label} API keys` : "Get a free Gemini API key";
 };
 byId<HTMLFormElement>("key-form").onsubmit = (event) => {
@@ -139,7 +143,7 @@ byId<HTMLFormElement>("key-form").onsubmit = (event) => {
 byId<HTMLFormElement>("bridge-form").onsubmit = (event) => {
   event.preventDefault();
   const url = bridgeAddress(bridge.value.trim());
-  if (!url) problem("Enter the bridge address, including http:// or https://.");
+  if (!url) problem(bridgeAddressHelp);
   else void perform("bridge", url, [hostPermission(url)]);
 };
 byId<HTMLFormElement>("about-form").onsubmit = (event) => {
@@ -152,16 +156,16 @@ byId<HTMLFormElement>("model-form").onsubmit = (event) => {
   void perform("model", planModel.hidden ? model.value : planModel.value);
 };
 byId<HTMLDetailsElement>("advanced").ontoggle = async () => {
-  model.hidden = false;
-  planModel.hidden = true;
+  model.hidden = model.disabled = false;
+  planModel.hidden = planModel.disabled = true;
   if (!byId<HTMLDetailsElement>("advanced").open || activeEngine?.kind !== "chatgpt") return;
   const { models } = await send("models").catch(() => ({}));
   if (activeEngine?.kind !== "chatgpt" || !models?.length) return;
   planModel.replaceChildren(...models.map(({ slug, label }: { slug: string; label: string }) => new Option(label, slug)));
   if (![...planModel.options].some(({ value }) => value === model.value)) planModel.prepend(new Option(model.value, model.value));
   planModel.value = model.value;
-  planModel.hidden = false;
-  model.hidden = true;
+  planModel.hidden = planModel.disabled = false;
+  model.hidden = model.disabled = true;
 };
 
 chrome.storage.onChanged.addListener((changes) => {

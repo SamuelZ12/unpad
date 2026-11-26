@@ -63,5 +63,6 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "description": "Removes the filler from articles and long posts, in the author's own words."
+  "description": "Removes the filler from articles and long posts, in the author's own words.",
+  "minimum_chrome_version": "126"
 }

@@ -11,6 +11,11 @@ const candidates = {
   openrouter: [providers.openrouter.model],
 };
 
+const requested = Bun.argv.slice(2);
+if (!requested.length || requested.some((id) => !Object.hasOwn(candidates, id))) {
+  throw new Error("Usage: bun run bench:providers anthropic gemini chatgpt openai openrouter");
+}
+
 const [prompt, keyPrompt] = await Promise.all([
   Bun.file("bridge/prompt.txt").text(), Bun.file("bridge/key-prompt.txt").text(),
 ]);
@@ -21,7 +26,7 @@ const fixtures = await Promise.all(["wang", "warp", "perfloop"].map(async (name)
 }));
 
 for (const id of Object.keys(candidates) as (keyof typeof candidates)[]) {
-  if (!Bun.argv.slice(2).includes(id)) continue;
+  if (!requested.includes(id)) continue;
   const credential = await (id === "chatgpt" ? chatGPTToken() : apiKey(id));
   if (!credential) {
     console.log(`SKIP ${id}: credential unavailable`);
@@ -35,7 +40,7 @@ for (const id of Object.keys(candidates) as (keyof typeof candidates)[]) {
         try {
           const result = await selectWithKey(doc, prompt, keyPrompt, "", askProvider(id, credential, model));
           const faded = result.selection.kind === "keep" ? doc.sentences.length - result.selection.keep.length : 0;
-          if (result.keyFailed || (name === "perfloop" ? faded !== 0 : faded < 3)) throw new Error();
+          if (result.keyFailed || (name === "perfloop" ? faded !== 0 || result.key.length !== 0 : faded < 3 || result.key.length === 0)) throw new Error();
           const seconds = (performance.now() - started) / 1000;
           times.get(model)!.push(seconds);
           console.log(`PASS ${model} ${name} ${seconds.toFixed(2)} s, ${faded} cut, ${result.key.length} marked`);
@@ -45,10 +50,11 @@ for (const id of Object.keys(candidates) as (keyof typeof candidates)[]) {
       }
     }
   }
+  if (![...times.values()].some((samples) => samples.length)) process.exitCode = 1;
   for (const [model, samples] of times) {
     samples.sort((a, b) => a - b);
     const stats = samples.length
-      ? `, median ${samples[Math.floor((samples.length - 1) / 2)].toFixed(2)} s, range ${samples[0].toFixed(2)} to ${samples.at(-1)!.toFixed(2)} s`
+      ? `, median ${((samples[Math.floor((samples.length - 1) / 2)] + samples[Math.floor(samples.length / 2)]) / 2).toFixed(2)} s, range ${samples[0].toFixed(2)} to ${samples.at(-1)!.toFixed(2)} s`
       : "";
     console.log(`${model} ${samples.length}/9${stats}`);
   }

@@ -1,4 +1,4 @@
-import { hostPermission, issue } from "../shared/connection";
+import { hostPermission, issue, type Engine } from "../shared/connection";
 import { connectionFetch, providers } from "./providers";
 
 const issuer = process.env.FILLER_CUT_DEV === "1"
@@ -15,8 +15,8 @@ const oauthPath = "/api/accounts/oauth";
 export const chatgptOrigins = [...new Set([hostPermission(issuer), hostPermission(resource), "http://127.0.0.1/*"])];
 
 type Account = { clientId: string; sub: string; email?: string };
-export type ChatGPTSession = { clientId: string; refresh: string };
-type Access = { token: string; expiresAt: number };
+export type ChatGPTSession = { id: string; clientId: string; refresh: string };
+type Access = { sessionId: string; token: string; expiresAt: number };
 type Attempt = {
   tabId: number;
   state: string;
@@ -71,8 +71,8 @@ export function startChatGPT(clientId?: string) {
     const account = (await savedAccounts()).find((row) => row.clientId === clientId);
     const previous = await pendingAttempt();
     if (previous) {
-      await clearAttempt();
       await chrome.tabs.remove(previous.tabId).catch(() => {});
+      await clearAttempt();
     }
 
     let chatgptHost = (await chrome.storage.local.get("chatgptHost")).chatgptHost as string | undefined;
@@ -119,8 +119,8 @@ export function startChatGPT(clientId?: string) {
       });
       await chrome.tabs.update(tabId, { url: auth.href });
     } catch (error) {
-      await clearAttempt();
       await chrome.tabs.remove(tabId).catch(() => {});
+      await clearAttempt();
       throw error;
     }
   });
@@ -149,25 +149,25 @@ async function verifyIdentity(token: string | undefined, clientId: string, nonce
   const claims = JSON.parse(new TextDecoder().decode(decode(body)));
   const validAudience = claims.aud === clientId || (Array.isArray(claims.aud) && claims.aud.includes(clientId) &&
     (claims.aud.length === 1 || claims.azp === clientId));
-  if (claims.iss !== issuer || !validAudience || claims.nonce !== nonce ||
+  if (claims.iss !== issuer || !validAudience || (claims.azp !== undefined && claims.azp !== clientId) || claims.nonce !== nonce ||
     !Number.isFinite(claims.exp) || claims.exp * 1000 <= Date.now() || typeof claims.sub !== "string" || !claims.sub) {
     throw new Error(issue.auth);
   }
   return { clientId, sub: claims.sub, ...(typeof claims.email === "string" && { email: claims.email }) };
 }
 
-function accessFrom(tokens: Tokens): Access {
+function accessFrom(tokens: Tokens, sessionId: string): Access {
   if (typeof tokens.access_token !== "string" || !tokens.access_token ||
       typeof tokens.expires_in !== "number" || !Number.isFinite(tokens.expires_in) || tokens.expires_in <= 0) {
     throw new Error(issue.auth);
   }
-  return { token: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000 };
+  return { sessionId, token: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000 };
 }
 
 export function finishChatGPT(tabId: number, query: string) {
   return serialize(async () => {
     const attempt = await pendingAttempt();
-    if (tabId !== attempt?.tabId) return;
+    if (tabId !== attempt?.tabId) return false;
     await clearAttempt();
     const params = new URLSearchParams(query);
     if (attempt.expiresAt < Date.now() || params.get("state") !== attempt.state) throw new Error(issue.auth);
@@ -191,13 +191,20 @@ export function finishChatGPT(tabId: number, query: string) {
     const accounts = (await savedAccounts()).filter((row) => row.clientId !== clientId);
     await chrome.storage.local.set({ chatgptAccounts: [...accounts, account] });
     if (!tokens.scope?.split(/\s+/).includes(directScope)) throw new Error(issue.denied);
-    const access = accessFrom(tokens);
+    const sessionId = crypto.randomUUID();
+    const access = accessFrom(tokens, sessionId);
     if (typeof tokens.refresh_token !== "string" || !tokens.refresh_token) throw new Error(issue.auth);
+    const previousSession = await currentChatGPTSession();
+    const { engine } = await chrome.storage.local.get("engine") as { engine?: Engine };
+    const model = engine?.kind === "chatgpt" && attempt.account?.clientId === clientId
+      ? engine.model : providers.chatgpt.model;
     await chrome.storage.session.set({ chatgptAccess: access });
     await chrome.storage.local.set({
-      chatgptSession: { clientId, refresh: tokens.refresh_token } satisfies ChatGPTSession,
-      engine: { kind: "chatgpt", model: providers.chatgpt.model },
+      chatgptSession: { id: sessionId, clientId, refresh: tokens.refresh_token } satisfies ChatGPTSession,
+      engine: { kind: "chatgpt", model },
     });
+    if (previousSession) await revoke(previousSession);
+    return true;
   });
 }
 
@@ -206,12 +213,15 @@ const terminalRefresh = new Set([
   "refresh_token_invalidated", "refresh_token_reused",
 ]);
 
-export function chatGPTAccess(rejected?: string): Promise<string> {
+export function chatGPTAccess(expectedSession?: string, rejected?: string): Promise<Access> {
   return serialize(async () => {
     const access = (await chrome.storage.session.get("chatgptAccess")).chatgptAccess as Access | undefined;
-    if (access && access.token !== rejected && access.expiresAt > Date.now() + 60_000) return access.token;
     const session = await currentChatGPTSession();
+    const sessionId = session?.id ?? (process.env.FILLER_CUT_DEV === "1" && access?.sessionId === "dev" ? "dev" : undefined);
+    if (expectedSession !== undefined && sessionId !== expectedSession) throw new Error(issue.signedOut);
+    if (access?.sessionId === sessionId && access && access.token !== rejected && access.expiresAt > Date.now() + 60_000) return access;
     if (!session) throw new Error(issue.signedOut);
+    if (!await chrome.permissions.contains({ origins: [hostPermission(issuer)] })) throw new Error(issue.permission);
     const { response, tokens } = await tokenRequest({
       grant_type: "refresh_token", client_id: session.clientId, refresh_token: session.refresh,
     });
@@ -230,46 +240,54 @@ export function chatGPTAccess(rejected?: string): Promise<string> {
       await chrome.storage.session.remove("chatgptAccess");
       throw new Error(issue.denied);
     }
-    const renewed = accessFrom(tokens);
+    const renewed = accessFrom(tokens, session.id);
     await chrome.storage.session.set({ chatgptAccess: renewed });
-    return renewed.token;
+    return renewed;
   });
+}
+
+async function revoke(session: ChatGPTSession) {
+  for (const delay of [0, 250, 1000]) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    const response = await connectionFetch(issuer + oauthPath + "/revoke", {
+      method: "POST",
+      body: new URLSearchParams({ token: session.refresh, token_type_hint: "refresh_token", client_id: session.clientId }),
+      signal: AbortSignal.timeout(4000),
+    }).catch(() => undefined);
+    if (response && response.status < 500) return response.ok;
+  }
+  return false;
 }
 
 export function disconnectChatGPT() {
   return serialize(async () => {
     const attempt = await pendingAttempt();
     if (attempt) {
-      await clearAttempt();
       await chrome.tabs.remove(attempt.tabId).catch(() => {});
+      await clearAttempt();
     }
     const session = await currentChatGPTSession();
     await chrome.storage.session.remove("chatgptAccess");
-    let revoked = !session;
-    if (session) {
-      for (const delay of [0, 250, 1000]) {
-        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-        const response = await connectionFetch(issuer + oauthPath + "/revoke", {
-          method: "POST",
-          body: new URLSearchParams({ token: session.refresh, token_type_hint: "refresh_token", client_id: session.clientId }),
-          signal: AbortSignal.timeout(4000),
-        }).catch(() => undefined);
-        revoked = response?.ok ?? false;
-        if (response && response.status < 500) break;
-      }
-    }
     await chrome.storage.local.remove("chatgptSession");
-    return revoked;
+    return !session || await revoke(session);
   });
 }
 
 export async function chatGPTModels() {
-  const token = await chatGPTAccess();
-  const response = await connectionFetch(resource + "/models", { headers: { authorization: `Bearer ${token}` } });
+  const catalog = (token: string) => connectionFetch(resource + "/models", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const { sessionId, token } = await chatGPTAccess();
+  let response = await catalog(token);
+  if (response.status === 401) response = await catalog((await chatGPTAccess(sessionId, token)).token);
   if (!response.ok) throw new Error(response.status === 401 ? issue.signedOut : issue.failed);
-  const { models }: { models?: { slug: string; display_name: string; visibility: string }[] } = await response.json();
-  return (models ?? []).filter(({ visibility }) => visibility === "list")
-    .map(({ slug, display_name }) => ({ slug, label: display_name }));
+  const { models, data }: {
+    models?: { slug: string; display_name: string; visibility: string }[];
+    data?: { id: string }[];
+  } = await response.json();
+  return models ? models.filter(({ visibility }) => visibility === "list")
+    .map(({ slug, display_name }) => ({ slug, label: display_name }))
+    : (data ?? []).map(({ id }) => ({ slug: id, label: id }));
 }
 
 export async function currentChatGPTSession() {

@@ -1,5 +1,5 @@
 import { TOGGLE_COMMAND } from "../shared/config";
-import { issue } from "../shared/connection";
+import { hostPermission, issue } from "../shared/connection";
 import { sha256 } from "../shared/keys";
 import { documentRoute, type PageSnapshot, type PressTarget } from "../shared/page-snapshot";
 import { parseEventsRequest, parseSelectRequest } from "../shared/wire";
@@ -32,7 +32,7 @@ if (typeof chrome !== "undefined") {
     Object.assign(globalThis, {
       async fillerCutTestChatGPT(token: string) {
         await trusted;
-        await chrome.storage.session.set({ chatgptAccess: { token, expiresAt: Date.now() + 15 * 60_000 } });
+        await chrome.storage.session.set({ chatgptAccess: { sessionId: "dev", token, expiresAt: Date.now() + 15 * 60_000 } });
         await chrome.storage.local.set({ engine: { kind: "chatgpt", model: providers.chatgpt.model } });
       },
     });
@@ -43,11 +43,15 @@ if (typeof chrome !== "undefined") {
   chrome.tabs.onRemoved.addListener((tabId) => { void cancelChatGPT(tabId).catch(() => {}); });
 
   async function pushPreferences(changes: Record<string, chrome.storage.StorageChange>) {
-    if (!changes.lensOn && !changes.engine && !changes.about) return;
+    const session = changes.chatgptSession;
+    const sessionId = (session?.newValue as { id?: string } | undefined)?.id;
+    const signedIn = !!sessionId && sessionId !== (session?.oldValue as { id?: string } | undefined)?.id;
+    const restart = !!(signedIn || changes.engine || changes.about);
+    if (!changes.lensOn && !restart) return;
     const { engine } = await readPreferences();
     const { lensOn } = await chrome.storage.local.get("lensOn");
     const message = { type: "reading-preferences", connected: !!engine, lensOn: lensOn !== false,
-      restart: !!(changes.engine || changes.about) };
+      restart };
     const tabs = await chrome.tabs.query({});
     await Promise.all(tabs.flatMap(({ id }) =>
       id === undefined ? [] : chrome.tabs.sendMessage(id, message, { frameId: 0 }).catch(() => {})));
@@ -186,7 +190,8 @@ if (typeof chrome !== "undefined") {
       if (!request?.events.length) return;
       void trusted.then(async () => {
         const { engine } = await readPreferences();
-        if (engine?.kind !== "bridge") return;
+        if (engine?.kind !== "bridge" || message.bridge !== await sha256(engine.url) ||
+            !await chrome.permissions.contains({ origins: [hostPermission(engine.url)] })) return;
         let queue = queueEvents.get(engine.url);
         if (!queue) queueEvents.set(engine.url, queue = chromeEventQueue(engine.url));
         await queue(request.events);
@@ -197,23 +202,35 @@ if (typeof chrome !== "undefined") {
     void (async () => {
       if (message.doc?.check && !await siteEnabled(sender.url)) return { error: "Site is no longer enabled" };
       await trusted;
-      const { engine, about } = await readPreferences();
+      const { engine, about, sessionId } = await readPreferences();
       if (!engine) return { error: issue.setup };
-      if (engine.kind === "chatgpt" && (await chrome.storage.session.get("selectionIssue")).selectionIssue === issue.usage) {
-        return { error: issue.usage };
+      if (engine.kind === "bridge" && !await chrome.permissions.contains({ origins: [hostPermission(engine.url)] })) {
+        return { error: issue.permission };
       }
-      const selector = engine.kind === "bridge" ? bridgeSelector(engine.url) : localSelector(engine, about);
+      if (engine.kind === "chatgpt") {
+        const { selectionIssue, issueAt } = await chrome.storage.session.get(["selectionIssue", "issueAt"]);
+        if (selectionIssue === issue.usage && typeof issueAt === "number" && Date.now() - issueAt < 60_000) {
+          return { error: issue.usage };
+        }
+        if (selectionIssue === issue.usage) await chrome.storage.session.remove(["selectionIssue", "issueAt"]);
+      }
+
+      const selector = engine.kind === "bridge" ? bridgeSelector(engine.url) : localSelector(engine, about, sessionId);
       const result = await selectDoc(message.doc, selector);
       if (engine.kind !== "bridge") {
         const latest = await readPreferences();
-        if (latest.about === about && JSON.stringify(latest.engine) === JSON.stringify(engine)) {
-          if ("error" in result) await chrome.storage.session.set({ selectionIssue: result.error });
-          else if ((await chrome.storage.session.get("selectionIssue")).selectionIssue !== issue.usage) {
-            await chrome.storage.session.remove("selectionIssue");
+        if (latest.about === about && JSON.stringify(latest.engine) === JSON.stringify(engine) &&
+            (engine.kind !== "chatgpt" || sessionId === latest.sessionId || !latest.sessionId)) {
+          const current = (await chrome.storage.session.get("selectionIssue")).selectionIssue;
+          if ("error" in result && (current !== issue.usage || result.error === issue.usage)) {
+            await chrome.storage.session.set({ selectionIssue: result.error, issueAt: Date.now() });
+          } else if (!("error" in result) && current !== issue.usage) {
+            await chrome.storage.session.remove(["selectionIssue", "issueAt"]);
           }
         }
       }
-      return result;
+      return engine.kind === "bridge" && !("error" in result)
+        ? { ...result, bridge: await sha256(engine.url) } : result;
     })().then(reply, () => reply({ error: "Selection failed" }));
     return true;
   });

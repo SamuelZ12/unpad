@@ -2,9 +2,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 async function readCredential(command: string[]) {
-  const child = Bun.spawn(command, { stdout: "pipe", stderr: "ignore" });
-  const [code, value] = await Promise.all([child.exited, new Response(child.stdout).text()]);
-  return code === 0 && value.trim() ? value.trim() : undefined;
+  try {
+    const child = Bun.spawn(command, { stdout: "pipe", stderr: "ignore", signal: AbortSignal.timeout(15_000) });
+    const [code, value] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+    return code === 0 && value.trim() ? value.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function apiKey(id: "anthropic" | "gemini" | "openai" | "openrouter") {

@@ -18,7 +18,7 @@ const openaiOrigin = "https://api.openai.com";
 function responses(stream: boolean): Provider["request"] {
   return (token, model, prompt) => ({
     path: "/v1/responses", headers: bearer(token),
-    body: { model, input: messages(prompt), store: false, stream, reasoning: { effort: "low" },
+    body: { model, input: messages(prompt), store: false, stream, ...((stream || /^gpt-[56]([.-]|$)/.test(model)) && { reasoning: { effort: "low" } }),
       ...(!stream && { max_output_tokens: 12_000 }) },
   });
 }
@@ -81,7 +81,7 @@ export const providers = {
     request: (token, model, prompt) => ({
       path: `/v1beta/models/${encodeURIComponent(model)}:generateContent`, headers: { "x-goog-api-key": token },
       body: { contents: [{ parts: [{ text: prompt }] }], generationConfig: {
-        maxOutputTokens: 12_000, ...(model.startsWith("gemini-3") && { thinkingConfig: { thinkingLevel: "minimal" } }),
+        maxOutputTokens: 12_000, ...(/^gemini-3(?:\.\d+)?-flash(?:-|$)/.test(model) && { thinkingConfig: { thinkingLevel: "minimal" } }),
       } },
     }),
     async read(response) {
@@ -103,7 +103,7 @@ export const providers = {
   },
   openai: {
     label: "OpenAI", origin: openaiOrigin, model: "gpt-6-luna",
-    key: /^sk-(?!(ant|or)-)/, keysUrl: "https://platform.openai.com/api-keys", request: responses(false), read: readResponses,
+    key: /^sk-(proj|svcacct)-/, keysUrl: "https://platform.openai.com/api-keys", request: responses(false), read: readResponses,
   },
 } satisfies { chatgpt: Provider } & Record<ProviderId, KeyProvider>;
 
@@ -117,7 +117,8 @@ export class ProviderFailure extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
-function providerFailure(id: keyof typeof providers, status: number, { error }: ErrorBody) {
+function providerFailure(id: keyof typeof providers, status: number, body: ErrorBody | null) {
+  const error = body?.error;
   const code = error?.code ?? error?.type;
   let message: string = issue.failed;
   if (code === "subscription_sharing_usage_limit_exceeded") message = issue.usage;
@@ -145,9 +146,9 @@ export function askProvider(id: keyof typeof providers, token: string, model: st
     if (!response.ok) throw providerFailure(id, response.status, await response.json().catch(() => ({})));
     const answer = await provider.read(response).catch((error) => {
       if (error instanceof ProviderFailure) throw error;
-      throw new Error(error instanceof TypeError ? issue.offline : issue.failed);
+      throw new Error((error instanceof TypeError || (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name))) ? issue.offline : issue.reply);
     });
-    if (typeof answer !== "string") throw new Error(issue.failed);
+    if (typeof answer !== "string" || !answer.trim()) throw new Error(issue.reply);
     // Some models wrap a bare array in a Markdown fence.
     return answer.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1");
   };

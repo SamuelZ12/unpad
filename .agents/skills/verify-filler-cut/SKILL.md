@@ -9,7 +9,7 @@ Read the [live specification](../../../tests/live/README.md) for check IDs and p
 
 ## Launch
 
-Run the commands from the repository root with Bun on `PATH`. On Samuel's Mini, Bun is in `~/.bun/bin`. For a fresh checkout, run `bun install` and `bunx playwright install chromium`.
+Run the commands from the repository root with Bun on `PATH`. Bun's default installation is in `~/.bun/bin`. For a fresh checkout, run `bun install` and `bunx playwright install chromium`.
 
 A `verify` command builds and loads the extension in Playwright. Its evidence path prints at startup. Each check starts its own test bridge when needed and waits for the reference document and the expected extension state. The bridge binds `127.0.0.1:18941` and loads its reader rules at startup. The harness sets `FILLER_CUT_DATA` to a fresh `/tmp/filler-bridge-*` directory. The permanent bridge on port 18931 belongs to `scripts/bridge-service.sh` and launchd. Checks never use it.
 
@@ -31,13 +31,13 @@ If bridge startup fails, run `lsof -nP -iTCP:18941 -sTCP:LISTEN`. Before a run, 
 Replace `<ids>` with space-separated IDs such as `S1 S8`. To choose a mode for a specific check or the demo, append `--mode=logged-out`, `--mode=replay`, or `--mode=logged-in`.
 
 - Use the harness's isolated `/tmp/filler-chrome-*` profiles for logged-out and replay. Never use Samuel's own Chrome profiles or ego-browser for verification.
-- The logged-in test profile is `~/.pi/agent/filler-cut/x-test-profile` for the throwaway account `@fillercut_test`. Open it only through Playwright's `launchPersistentContext`, as in `tests/live/lib/browser.ts`. A raw Chrome binary stores cookies under a different keychain key. On Nov 23, 2026, this caused the next Playwright launch to drop the session without an error and the login was lost.
-- In the logged-in profile, only load pages, scroll, press keys, and click article text. Leave at least 3 s between page loads. S11 follows its status link within the article.
-- Real Pi calls use Samuel's Claude plan. Warm checks reuse the cache within a run. Set `FILLER_CUT_VERIFY_CACHE` to a previous run's `bridge/cache` directory to seed a new run. Cold checks clear the cache before measuring.
+- For signed-in checks, set `FILLER_CUT_X_TEST_PROFILE` to a Chrome profile under `/tmp` that is signed in to a test account. Open that profile only through Playwright's `launchPersistentContext`. Regular Chrome may use a different cookie encryption key.
+- In the signed-in profile, leave at least 3 s between page loads. S11 follows the status link within the article.
+- Real Pi calls use the plan or key configured in Pi. Warm checks reuse the cache within a run. Set `FILLER_CUT_VERIFY_CACHE` to a previous run's `bridge/cache` directory to seed a new run. Cold checks clear the cache before measuring.
 - Run `bun run verify S17 S18` for key sentence marks, Shift reveal, lens off, clicks that leave marks alone, and the short-document cutoff. The checks verify visible yellow pixels, the mark count, and Wang's event log. S18 saves `warp-cut.png`. Run `bun run verify S19` for both bare-text Paul Graham pages.
 - Playwright keys reach the content script. They never fire Chrome's browser shortcut. Checks that exercise the fallback page key load a temporary copy of the extension with the browser shortcut unassigned. S8 saves dark Wang before and after expanding a run.
 - Run `bun run verify S12-page-mode S12-added-site S12-page-check` for page mode, persistent per-origin access, and the article check. CDP opens Chrome's popup. The site checks pre-approve exact origins in Chrome before requesting them through the popup checkbox. Run S20 for toast and popup screenshots and S21 to check the assigned shortcut after reloading an updated unpacked extension.
-- To update a copy that is loaded unpacked in a real Chrome, copy the new build over its folder and have the reader press the reload arrow on the extension's card. Copied files change nothing until then (measured Nov 23 2026: manifest, worker and page script all stayed old). The build names the worker by its content hash because a browser restart alone kept running the old worker next to the new manifest and page script.
+- To update a copy loaded unpacked in Chrome, copy the new build over its folder and have the reader press the reload arrow on the extension's card. Copied files change nothing until then (measured Nov 23 2026: manifest, worker and page script all stayed old). The build names the worker by its content hash because a browser restart alone kept running the old worker next to the new manifest and page script.
 
 ## Evidence
 

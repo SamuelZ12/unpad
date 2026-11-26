@@ -3,9 +3,11 @@ import { bridgeAddress, type Engine, type PublicEngine } from "../shared/connect
 const defaultBridge = process.env.BRIDGE_URL ?? "";
 export const initialEngine: Engine | undefined = defaultBridge ? { kind: "bridge", url: defaultBridge } : undefined;
 
-export async function readPreferences(): Promise<{ engine?: Engine; about: string }> {
-  const { engine, about } = await chrome.storage.local.get(["engine", "about"]) as { engine?: Engine | null; about?: string };
-  return { engine: engine === undefined ? initialEngine : engine ?? undefined, about: about ?? "" };
+export async function readPreferences(): Promise<{ engine?: Engine; about: string; sessionId?: string }> {
+  const { engine, about, chatgptSession } = await chrome.storage.local.get(["engine", "about", "chatgptSession"]) as {
+    engine?: Engine | null; about?: string; chatgptSession?: { id: string };
+  };
+  return { engine: engine === undefined ? initialEngine : engine ?? undefined, about: about ?? "", sessionId: chatgptSession?.id };
 }
 
 export function publicEngine(engine?: Engine): PublicEngine | undefined {

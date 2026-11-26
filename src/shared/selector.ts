@@ -9,7 +9,7 @@ export const CHECK_PROMPT = "First decide whether this page should be cut at all
 export function parseSelection(raw: string, sentenceCount: number, checked = false): Selection | undefined {
   // The check asks READ or SKIP first. Pi may say READ before the array.
   const answer = (checked ? raw.replace(/^\s*READ\b[.:]?/, "") : raw).trim();
-  if (checked && answer === "SKIP") return { kind: "skip" };
+  if (checked && raw.trim() === "SKIP") return { kind: "skip" };
   if (answer === "ALL" || answer === '"ALL"') return { kind: "keep-all" };
 
   let values: unknown;

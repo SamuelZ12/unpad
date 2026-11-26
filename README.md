@@ -41,7 +41,7 @@ bun install
 bun run bridge
 ```
 
-In extension settings, open **Advanced** and enter `http://127.0.0.1:18931` under **Bridge URL**. The bridge keeps its cache and logs under `~/.pi/agent/filler-cut/data` by default. Set `FILLER_CUT_DATA` to choose a different directory or `FILLER_CUT_RULES` to supply a reader notes file.
+In extension settings, open **Advanced** and enter `http://127.0.0.1:18931` under **Bridge URL**. Use HTTPS for a bridge on another device. The bridge keeps its cache and logs under `~/.pi/agent/filler-cut/data` by default. Set `FILLER_CUT_DATA` to choose a different directory or `FILLER_CUT_RULES` to supply a reader notes file.
 
 On macOS, run `scripts/bridge-service.sh install` to start the bridge at login. To reach it from another device over Tailscale, add `--tailnet` to the install command.
 
@@ -56,7 +56,7 @@ bun run check
 bun run zip
 ```
 
-Load `dist/extension` in Chrome. The zip command creates a clean store archive in `dist/`. See [live verification](tests/live/README.md) for the browser checks.
+Load `dist/extension` in Chrome. The zip command uses the system `zip` tool to create a clean store archive in `dist/`. See [live verification](tests/live/README.md) for the browser checks.
 
 ## License
 

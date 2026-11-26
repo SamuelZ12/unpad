@@ -1,5 +1,5 @@
 import { builtinSite, builtinSites, grantedSites, inspectDocument, siteMatch } from "../background/sites";
-import { issue } from "../shared/connection";
+import { CHATGPT_USAGE, issue } from "../shared/connection";
 import { assignedShortcut } from "../shared/shortcut";
 import type { PageSnapshot, PressTarget } from "../shared/page-snapshot";
 import { statusFeedback } from "../shared/status-copy";
@@ -22,8 +22,11 @@ const settingsLink = document.querySelector<HTMLButtonElement>("#settings-link")
 const name = chrome.runtime.getManifest().name;
 document.title = name;
 document.querySelector("#name")!.textContent = name;
-manage.onclick = () => { void chrome.runtime.sendMessage({ type: "manage-usage" }); };
-connect.onclick = settingsLink.onclick = () => void chrome.runtime.openOptionsPage();
+manage.href = CHATGPT_USAGE;
+manage.onclick = () => { void chrome.runtime.sendMessage({ type: "manage-usage" }).catch(() => {}); };
+connect.onclick = settingsLink.onclick = () => {
+  void chrome.runtime.openOptionsPage().catch(() => showError("Couldn’t open settings. Open the extension’s options in Chrome."));
+};
 
 let tabId: number | undefined;
 let target: PressTarget | undefined;
@@ -67,8 +70,9 @@ async function refresh(id: number) {
   if (id !== refreshId) return;
   tabId = tab?.id;
   const connected = !!connection?.engine;
-  const usage = connected && connection.issue === issue.usage;
-  const signedOut = connected && (connection.issue === issue.signedOut || connection.issue === issue.denied);
+  const usingPlan = connection?.engine?.kind === "chatgpt";
+  const usage = usingPlan && connection.issue === issue.usage;
+  const signedOut = usingPlan && (connection.issue === issue.signedOut || connection.issue === issue.denied);
   const keyRejected = connection?.engine?.kind === "key" && connection.issue === issue.invalidKey;
   connect.hidden = connected && !signedOut && !keyRejected;
   connect.textContent = signedOut ? "Sign in again" : keyRejected ? "Replace API key" : "Set up";

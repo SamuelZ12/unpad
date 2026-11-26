@@ -1,4 +1,4 @@
-import { hostPermission, issue, type Engine } from "../shared/connection";
+import { bridgeAddressHelp, hostPermission, issue, type Engine } from "../shared/connection";
 import { chatgptOrigins, chatGPTModels, currentChatGPTSession, disconnectChatGPT, finishChatGPT, savedAccounts, startChatGPT } from "./chatgpt";
 import { parseBridge, publicEngine, readPreferences } from "./preferences";
 import { askProvider, providers, recognizeKey } from "./providers";
@@ -51,18 +51,22 @@ export function createSettings(trusted: Promise<unknown>) {
           }
           case "bridge": {
             const url = parseBridge(value);
-            if (!url) return { error: "Enter the bridge address, including http:// or https://." };
+            if (!url) return { error: bridgeAddressHelp };
             if (!await chrome.permissions.contains({ origins: [hostPermission(url)] })) return { error: issue.permission };
             return setEngine({ kind: "bridge", url });
           }
           case "disconnect":
             return setEngine(null);
           case "about":
-            if (typeof value === "string" && value.length <= 4000) await chrome.storage.local.set({ about: value.trim() });
+            if (typeof value !== "string" || value.length > 4000) return { error: "Keep your notes under 4,000 characters." };
+            await chrome.storage.local.set({ about: value.trim() });
             return {};
           case "model":
             if (engine && engine.kind !== "bridge" && typeof value === "string" && /^[a-zA-Z0-9_./:-]{1,150}$/.test(value)) {
-              await chrome.storage.session.remove("selectionIssue");
+              const { selectionIssue } = await chrome.storage.session.get("selectionIssue");
+              if (selectionIssue !== issue.usage && selectionIssue !== issue.signedOut) {
+                await chrome.storage.session.remove("selectionIssue");
+              }
               await chrome.storage.local.set({ engine: { ...engine, model: value } });
               return {};
             }
@@ -79,7 +83,7 @@ export function createSettings(trusted: Promise<unknown>) {
     callback: (tabId: number, query: string) => run(async () => {
       let error: string | undefined;
       try {
-        await finishChatGPT(tabId, query);
+        if (!await finishChatGPT(tabId, query)) return { error: issue.auth };
       } catch (err) {
         const message = err instanceof Error ? err.message : "";
         error = Object.values(issue).find((text) => text === message) ?? issue.auth;

@@ -1,4 +1,5 @@
 import { initialEngine, readPreferences } from "./preferences";
+import { hostPermission } from "../shared/connection";
 import type { LogEvent } from "../shared/types";
 import { parseEventsRequest, parseEventsResponse } from "../shared/wire";
 
@@ -36,8 +37,10 @@ export function chromeEventQueue(url: string) {
       try {
         const { engine } = await readPreferences();
         if (engine?.kind !== "bridge" || engine.url !== url) return false;
+        if (!await chrome.permissions.contains({ origins: [hostPermission(url)] })) return false;
         const response = await fetch(new URL("/events", url), {
           method: "POST",
+          redirect: "error",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ events }),
           signal: AbortSignal.timeout(5000),

@@ -6,7 +6,7 @@ type SpecificEvent<T extends LogEvent = LogEvent> = T extends LogEvent
 
 export function createLog(url: string) {
   const pageView = randomId();
-  return async (...events: SpecificEvent[]) => {
+  return async (bridge: string, ...events: SpecificEvent[]) => {
     const at = new Date().toISOString();
     const entries = await Promise.all(events.map(async (event): Promise<LogEvent> => {
       const occurrence = event.type === "restore" || event.type === "recut" ? [randomId()] : [];
@@ -17,7 +17,7 @@ export function createLog(url: string) {
         ]));
       return { ...event, id, at, pageView, url };
     }));
-    const queued = await chrome.runtime.sendMessage({ type: "events", events: entries });
+    const queued = await chrome.runtime.sendMessage({ type: "events", bridge, events: entries });
     if (!queued) throw new Error("Could not queue Unpad event");
   };
 }

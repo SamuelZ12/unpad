@@ -16,6 +16,8 @@ bun run verify all --mode=replay
 bun run verify all --mode=logged-in
 ```
 
+For the signed-in mode, set `FILLER_CUT_X_TEST_PROFILE` to an isolated profile under `/tmp` signed in to a test account.
+
 The harness prints the evidence directory and writes `results.log`. It also saves screenshots, bridge logs, and console captures. See the instructions for the isolated Chrome profiles and test bridge. [Verification skill](../../.agents/skills/verify-filler-cut/SKILL.md)
 
 | Check | Pass condition |

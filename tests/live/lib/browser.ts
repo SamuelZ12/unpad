@@ -1,5 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { homedir } from "node:os";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { preapproveHost, extensionId, requestHostFromOptions } from "./extension";
 import { chromium, type Page, type ViewportSize } from "playwright";
@@ -41,9 +40,16 @@ export async function launch(
   const { actionProfile, extension = resolve("dist/extension"), viewport = { width: 1280, height: 900 } } = options;
   const temporary = mode !== "logged-in";
   if (actionProfile && !temporary) throw new Error("Browser action checks require an isolated profile");
-  const profile = actionProfile ?? (temporary
-    ? await mkdtemp("/tmp/filler-chrome-")
-    : resolve(homedir(), ".pi/agent/filler-cut/x-test-profile"));
+  const signedIn = process.env.FILLER_CUT_X_TEST_PROFILE;
+  let profile: string;
+  if (temporary) {
+    profile = actionProfile ?? await mkdtemp("/tmp/filler-chrome-");
+  } else {
+    if (!signedIn || !(await realpath(signedIn)).startsWith((await realpath("/tmp")) + "/")) {
+      throw new Error("Set FILLER_CUT_X_TEST_PROFILE to an isolated Chrome profile under /tmp");
+    }
+    profile = signedIn;
+  }
   const cleanup = async () => {
     if (temporary && !actionProfile) await rm(profile, { recursive: true, force: true });
   };
@@ -67,6 +73,7 @@ export async function launch(
         await route.fulfill({ contentType: "text/html", body });
       });
     }
+    let addedWarp = false;
     let warpEnabled: Promise<void> | undefined;
     async function addWarpSite() {
       const match = "https://claude.com:443/*";
@@ -74,9 +81,20 @@ export async function launch(
       const settings = await context.newPage();
       try {
         await settings.goto(`chrome-extension://${await extensionId(context)}/options.html`);
-        await requestHostFromOptions(settings, match);
+        const { present, lensOn } = await settings.evaluate(async (origin) => ({
+          present: (await chrome.permissions.getAll()).origins?.includes(origin) ?? false,
+          lensOn: (await chrome.storage.local.get("lensOn")).lensOn as boolean | undefined,
+        }), match);
+        if (!present) {
+          await requestHostFromOptions(settings, match);
+          addedWarp = true;
+        }
         await settings.waitForFunction(async (id) =>
           (await chrome.scripting.getRegisteredContentScripts({ ids: [id] })).length > 0, match);
+        await settings.evaluate(async (lensOn) => {
+          if (lensOn === undefined) await chrome.storage.local.remove("lensOn");
+          else await chrome.storage.local.set({ lensOn });
+        }, lensOn);
       } finally {
         await settings.close();
       }
@@ -106,7 +124,16 @@ export async function launch(
       return root;
     }
     return { context, open, close: async () => {
-      try { await context.close(); } finally { await cleanup(); }
+      try {
+        if (!temporary && addedWarp) {
+          const settings = await context.newPage();
+          await settings.goto(`chrome-extension://${await extensionId(context)}/options.html`);
+          await settings.evaluate(() => chrome.permissions.remove({ origins: ["https://claude.com:443/*"] }));
+          await settings.close();
+        }
+      } finally {
+        try { await context.close(); } finally { await cleanup(); }
+      }
     } };
   } catch (error) {
     await cleanup();

@@ -40,12 +40,13 @@ export async function requestHostFromOptions(page: Page, origin: string) {
     button.id = "test-host-grant";
     button.textContent = "Grant test access";
     button.onclick = async () => {
-      button.dataset.granted = String(await chrome.permissions.request({ origins: [origin] }));
+      button.dataset.granted = String(await chrome.permissions.request({ origins: [origin] }).catch(() => false));
     };
     document.body.append(button);
   }, origin);
   const button = page.locator("#test-host-grant");
   await button.click();
-  await page.locator("#test-host-grant[data-granted=true]").waitFor({ timeout: 5000 });
+  await page.locator("#test-host-grant[data-granted]").waitFor({ timeout: 5000 });
+  if (await button.getAttribute("data-granted") !== "true") throw new Error(`Could not grant ${origin}`);
   await button.evaluate((node) => node.remove());
 }

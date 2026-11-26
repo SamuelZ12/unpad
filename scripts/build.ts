@@ -5,6 +5,9 @@ import manifest from "../src/manifest.json";
 const bridge = process.env.BRIDGE_URL && bridgeAddress(process.env.BRIDGE_URL);
 if (process.env.BRIDGE_URL && !bridge) throw new Error("BRIDGE_URL must be an HTTP or HTTPS origin");
 const dev = process.env.FILLER_CUT_DEV === "1";
+const authOrigin = dev && process.env.FILLER_CUT_AUTH_ORIGIN
+  ? bridgeAddress(process.env.FILLER_CUT_AUTH_ORIGIN) : "";
+if (dev && process.env.FILLER_CUT_AUTH_ORIGIN && !authOrigin) throw new Error("Invalid development auth origin");
 const [prompt, keyPrompt] = await Promise.all(["prompt.txt", "key-prompt.txt"].map((file) =>
   Bun.file(new URL(`../bridge/${file}`, import.meta.url)).text()));
 
@@ -22,7 +25,7 @@ const build = await Bun.build({
   define: {
     "process.env.BRIDGE_URL": JSON.stringify(bridge || ""),
     "process.env.FILLER_CUT_DEV": JSON.stringify(dev ? "1" : "0"),
-    "process.env.FILLER_CUT_AUTH_ORIGIN": JSON.stringify(dev ? process.env.FILLER_CUT_AUTH_ORIGIN ?? "" : ""),
+    "process.env.FILLER_CUT_AUTH_ORIGIN": JSON.stringify(authOrigin || ""),
     "process.env.FILLER_CUT_PROMPT": JSON.stringify(prompt),
     "process.env.FILLER_CUT_KEY_PROMPT": JSON.stringify(keyPrompt),
   },

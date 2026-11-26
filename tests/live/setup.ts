@@ -102,7 +102,7 @@ async function fakeOAuth() {
     if (url.pathname === "/api/accounts/authorize") {
       auth = url.searchParams;
       if (auth.get("client_id") !== "dynamic_agent_client" || auth.get("agent_name_hint") !== "Unpad" ||
-          !auth.get("scope")?.includes("chatgpt.tokens.use.direct")) return new Response("Bad authorisation", { status: 400 });
+          auth.get("code_challenge_method") !== "S256" || !auth.get("scope")?.includes("chatgpt.tokens.use.direct")) return new Response("Bad authorisation", { status: 400 });
       const callback = new URL(auth.get("redirect_uri")!);
       callbacks.push(Bun.serve({ hostname: "127.0.0.1", port: Number(callback.port), fetch() {
         loopback++;
@@ -164,6 +164,8 @@ for (const id of args) {
         await captures(options, "welcome-first-run");
         const article = tabs.pages().find((page) => page !== options) ?? await tabs.newPage();
         await article.goto(xHomeUrl);
+        await article.bringToFront();
+        await article.locator("html[data-filler-cut-state]").waitFor({ state: "attached", timeout: 5000 });
         await toggle(article);
         await article.locator("filler-cut-toast").getByText(issue.setup, { exact: true }).waitFor({ timeout: 5000 });
         await action.withPopup(article, async (popup) => {
@@ -195,7 +197,13 @@ for (const id of args) {
             assert.equal(fake.loopback, 0);
             const worker = await extensionWorker(tabs);
             assert.equal(await worker.evaluate(async () => (await chrome.declarativeNetRequest.getSessionRules()).length), 0);
-            if (scenario === "success") {
+            if (scenario !== "success") {
+              assert.equal(await worker.evaluate(async () => {
+                const { engine, chatgptSession } = await chrome.storage.local.get(["engine", "chatgptSession"]);
+                const { chatgptAccess } = await chrome.storage.session.get("chatgptAccess");
+                return !!(engine || chatgptSession || chatgptAccess);
+              }), false, "Unapproved OAuth attempt saved credentials");
+            } else {
               await captures(options, "welcome-chatgpt");
               await worker.evaluate((message) => chrome.storage.session.set({ selectionIssue: message }), issue.usage);
               await options.locator("#usage-primary").waitFor({ state: "visible" });

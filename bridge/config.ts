@@ -31,10 +31,14 @@ export async function loadConfig() {
   const port = Number(process.env.PORT ?? 18931);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
 
+  const readRules = rulesFile.bytes().catch((error: NodeJS.ErrnoException) => {
+    if (!process.env.FILLER_CUT_RULES && error.code === "ENOENT") return new Uint8Array();
+    throw error;
+  });
   const [prompt, keyPrompt, rulesBytes] = await Promise.all([
     Bun.file(new URL("./prompt.txt", import.meta.url)).text(),
     Bun.file(new URL("./key-prompt.txt", import.meta.url)).text(),
-    process.env.FILLER_CUT_RULES || await rulesFile.exists() ? rulesFile.bytes() : new Uint8Array(),
+    readRules,
   ]);
   const [versions, keyVersions] = await Promise.all([
     versionsFor(prompt, rulesBytes),

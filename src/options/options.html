@@ -14,7 +14,7 @@
     <section id="connect" hidden aria-labelledby="connect-title">
       <h2 id="connect-title">Connect</h2>
       <p id="problem" role="status" hidden></p>
-      <a id="usage-primary" class="primary" href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer" hidden>Manage usage</a>
+      <a id="usage-primary" class="primary" target="_blank" rel="noreferrer" hidden>Manage usage</a>
       <div id="choose">
         <p>Use your ChatGPT plan or connect an API key.</p>
         <select id="accounts" aria-label="ChatGPT account" hidden></select>
@@ -25,13 +25,13 @@
         <label for="key">API key</label>
         <input id="key" type="password" autocomplete="off" spellcheck="false" required>
         <p id="recognized" role="status">Supports Anthropic, OpenAI, Google Gemini, and OpenRouter.</p>
-        <p><a id="get-key" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Get a free Gemini API key</a></p>
+        <p><a id="get-key" target="_blank" rel="noreferrer">Get a free Gemini API key</a></p>
         <button id="connect-key" class="primary" type="submit" disabled>Connect</button>
         <button id="back" class="quiet" type="button">Back</button>
       </form>
       <div id="connected" hidden>
         <p id="connection-name"></p>
-        <a id="usage" href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer" hidden>Manage usage</a>
+        <a id="usage" target="_blank" rel="noreferrer" hidden>Manage usage</a>
         <button id="replace-key" class="primary" type="button" hidden>Replace API key</button>
         <button id="disconnect" class="quiet" type="button">Disconnect</button>
       </div>
@@ -44,7 +44,7 @@
     </section>
     <section id="personalize" hidden aria-labelledby="about-title">
       <h2 id="about-title"><label for="about">About you</label></h2>
-      <p id="about-help">Optional. Say what you already know well or what you’re working on.</p>
+      <p id="about-help">Optional. Say what you already know well or what you’re working on. Your notes go to the service you connect.</p>
       <form id="about-form">
         <textarea id="about" rows="3" maxlength="4000" aria-describedby="about-help"></textarea>
         <button class="secondary" type="submit">Save</button>

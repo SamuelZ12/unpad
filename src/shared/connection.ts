@@ -22,6 +22,7 @@ export const issue = {
   ineligible: "This ChatGPT account can’t use plan access here. Connect an API key.",
   permission: "Connection access was declined. Try again and allow access.",
   model: "This model can’t be used. Choose another model in Advanced.",
+  reply: "The reply could not be read. Try the shortcut or switch again.",
   failed: "The reply could not be read. Try again.",
   denied: "ChatGPT plan access was declined. Try again to grant access.",
   auth: "ChatGPT sign-in could not be completed. Try again.",
@@ -32,9 +33,12 @@ export function hostPermission(url: string) {
   return `${protocol}//${hostname}/*`;
 }
 
+export const bridgeAddressHelp = "Use an HTTPS address or an HTTP address on this computer.";
+
 export function bridgeAddress(value: string) {
   const url = URL.parse(value);
   if (!url || !["http:", "https:"].includes(url.protocol) ||
       url.hostname.includes("*") || url.username || url.password || url.origin !== url.href.replace(/\/$/, "")) return;
+  if (url.protocol === "http:" && !["127.0.0.1", "[::1]", "localhost"].includes(url.hostname)) return;
   return url.origin;
 }

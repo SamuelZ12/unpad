@@ -27,6 +27,7 @@ test("only fades when at least three sentences are left out", () => {
 });
 
 test("accepts a standalone SKIP only for checked pages", async () => {
+  expect(parseSelection("READ\nSKIP", 6, true)).toBeUndefined();
   expect(parseSelection("SKIP", 6)).toBeUndefined();
   expect(parseSelection('"SKIP"', 6, true)).toBeUndefined();
   expect(parseSelection("SKIP: project page", 6, true)).toBeUndefined();
