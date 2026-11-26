@@ -1,5 +1,5 @@
-import { pageStatus, type NoContentHint, type PageStatus } from "../core/page-status";
-import { fadedIds, markedIds, reduce, view, type PageEvent, type PageState } from "../core/state";
+import { pageStatus, type PageStatus } from "../core/page-status";
+import { fadedIds, markedIds, reduce, view, type DocState, type PageEvent, type PageState } from "../core/state";
 import type { Doc, DocKey, SentenceId } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
 import { documentRoute, type PageSnapshot } from "../shared/page-snapshot";
@@ -17,6 +17,8 @@ import { usesGenericSurface } from "./surfaces";
 
 type Mode = "site" | "page";
 
+const recentUnmountedLimit = 128;
+
 function start() {
   const projection = createProjection((action) => {
     dispatch(action.event, action);
@@ -25,13 +27,15 @@ function start() {
   let log = createLog(href);
   let pageView = 0;
   let scanVersion = 0;
+  let mutationVersion = 0;
+  let scannedMutation = 0;
   let mode: Mode | undefined;
   const shown = new Set<Doc["key"]>();
   const bridgeForDoc = new Map<DocKey, string>();
 
   let state: PageState = { lensOn: false, holding: false, docs: new Map() };
   let anchoredDocs: AnchoredDoc[] = [];
-  let hint: NoContentHint | undefined;
+  let scanned = false;
   let scanError: string | undefined;
   let lastAttempt: PageStatus | undefined;
   let scanning: Promise<void> | undefined;
@@ -40,23 +44,25 @@ function start() {
   let lastStatus: string | undefined;
   const toast = createToast((change) => mutate(change));
 
-  function visibleState() {
-    return {
-      ...state,
-      docs: new Map(anchoredDocs.flatMap(({ doc }) => {
-        const entry = state.docs.get(doc.key);
-        return entry ? [[doc.key, entry]] : [];
-      })),
-    };
+  function mountedEntries(): DocState[] {
+    return anchoredDocs.flatMap(({ doc }) => {
+      const entry = state.docs.get(doc.key);
+      return entry ? [entry] : [];
+    });
   }
 
-  function currentStatus(): PageStatus {
-    return scanError ? { kind: "failed", reason: scanError } : pageStatus(visibleState(), hint);
+  function visibleState(mounted = mountedEntries()): PageState {
+    return { ...state, docs: new Map(mounted.map((entry) => [entry.doc.key, entry])) };
   }
 
-  function snapshot(): PageSnapshot {
-    const status = mode === "site" && !connected ? undefined : mode ? currentStatus() : lastAttempt;
-    return { mode, lensOn: state.lensOn, status };
+  function currentStatus(mounted = mountedEntries()): PageStatus {
+    return scanError ? { kind: "failed", reason: scanError } : pageStatus(state, scanned, mounted);
+  }
+
+  function snapshot(mounted?: DocState[]): PageSnapshot {
+    const { lensOn } = state;
+    if (mode === "site" && !connected) return { mode, lensOn };
+    return { mode, lensOn, status: mode ? currentStatus(mounted) : lastAttempt };
   }
 
   type RunAction = Parameters<typeof projection.reconcile>[2];
@@ -68,18 +74,18 @@ function start() {
     if (orphaned()) return;
     const control = mutate(() => projection.reconcile(anchoredDocs, state, action));
     const html = document.documentElement;
-    const current = view(visibleState());
+    const mounted = mountedEntries();
+    const current = view(visibleState(mounted));
     html.dataset.fillerCutState = current;
     let fadedTotal = 0;
     let markedTotal = 0;
-    for (const { doc } of anchoredDocs) {
+    for (const { doc, picks } of mounted) {
       const faded = fadedIds(state, doc.key).length;
       const marks = markedIds(state, doc.key).length;
       fadedTotal += faded;
       markedTotal += marks;
-      const picks = state.docs.get(doc.key)?.picks;
       const bridge = bridgeForDoc.get(doc.key);
-      if (!bridge || (!faded && !marks) || picks?.kind !== "ready" || shown.has(doc.key)) continue;
+      if (!bridge || (!faded && !marks) || picks.kind !== "ready" || shown.has(doc.key)) continue;
       shown.add(doc.key);
       void log(bridge, {
         type: "shown", cacheKey: picks.cacheKey,
@@ -88,7 +94,7 @@ function start() {
     }
     html.dataset.fillerCutFaded = String(fadedTotal);
     html.dataset.fillerCutMarked = String(markedTotal);
-    const page = snapshot();
+    const page = snapshot(mounted);
     const signature = JSON.stringify([href, page, current]);
     if (signature !== lastStatus) {
       lastStatus = signature;
@@ -137,8 +143,21 @@ function start() {
     if (event.type === "restore" || event.type === "recut") logClicks(event.type, event.docKey, event.ids);
   }
 
-  async function requestPicks(doc: Doc, check: SelectRequest["check"], requestedOn: number) {
-    const isCurrent = () => requestedOn === pageView && href === location.href;
+  async function requestPicks(entry: DocState, check: SelectRequest["check"]) {
+    const { doc } = entry;
+    const isCurrent = () => state.docs.get(doc.key) === entry && href === location.href;
+    async function report(event: PageEvent) {
+      if (doc.surface === "x-post") {
+        mutate(() => {});
+        if (!scanning && scannedMutation !== mutationVersion) void scan();
+        await finishScan();
+        if (isCurrent() && (scanError || scannedMutation !== mutationVersion)) {
+          state = reduce(state, event);
+          return;
+        }
+      }
+      if (isCurrent()) dispatch(event);
+    }
     try {
       // A short page gets no marks, so it keeps the fade-only cache entry.
       const { title, sentences } = doc;
@@ -150,9 +169,9 @@ function start() {
       if (!isCurrent()) return;
       const { bridge } = answer as { bridge?: string };
       if (typeof bridge === "string") bridgeForDoc.set(doc.key, bridge);
-      dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
+      await report({ type: "picks-arrived", docKey: doc.key, ...picks });
     } catch (error) {
-      if (isCurrent()) dispatch({ type: "picks-failed", docKey: doc.key, reason: error instanceof Error ? error.message : "Selection failed" });
+      if (isCurrent()) await report({ type: "picks-failed", docKey: doc.key, reason: error instanceof Error ? error.message : "Selection failed" });
     }
   }
 
@@ -176,12 +195,15 @@ function start() {
     const start = performance.now();
     const url = new URL(href);
     const check = mode === "site" && usesGenericSurface(url) ? { url: url.origin + url.pathname } : undefined;
-    const result = await extract(document, url, !!check, projection.read);
-    if (!current()) return;
+    const readAt = mutate(() => mutationVersion);
+    const docs = await extract(document, url, !!check, projection.read);
+    if (!current() || (url.hostname === "x.com" && readAt !== mutate(() => mutationVersion))) return;
 
     scanError = undefined;
-    hint = result.hint;
-    anchoredDocs = result.docs.filter(({ root }) => root.isConnected);
+    scanned = true;
+    scannedMutation = readAt;
+    anchoredDocs = docs.filter(({ root }) => root.isConnected);
+    if (url.hostname === "x.com") retainRecentDocs();
 
     if (process.env.FILLER_CUT_DEV === "1") {
       document.documentElement.dataset.fillerCutDebug = JSON.stringify({
@@ -192,9 +214,24 @@ function start() {
     for (const { doc } of anchoredDocs) {
       if (state.docs.has(doc.key)) continue;
       state = reduce(state, { type: "doc-found", doc });
-      void requestPicks(doc, check, pageView);
+      void requestPicks(state.docs.get(doc.key)!, check);
     }
     render();
+  }
+
+  function retainRecentDocs() {
+    // Move mounted docs to the end so the oldest unmounted entries are evicted first.
+    const mounted = visibleState().docs;
+    const docs = new Map(state.docs);
+    for (const key of mounted.keys()) docs.delete(key);
+    for (const key of docs.keys()) {
+      if (docs.size <= recentUnmountedLimit) break;
+      docs.delete(key);
+      shown.delete(key);
+      bridgeForDoc.delete(key);
+    }
+    for (const [key, entry] of mounted) docs.set(key, entry);
+    state = { ...state, docs };
   }
 
   async function finishScan() {
@@ -206,7 +243,7 @@ function start() {
     pageView++;
     scanVersion++;
     anchoredDocs = [];
-    hint = undefined;
+    scanned = false;
     scanError = undefined;
     lastAttempt = attempt;
     scanning = undefined;
@@ -234,7 +271,6 @@ function start() {
       if (sameDocument) href = location.href;
       else stop();
     } else reset();
-    void scan();
   }
 
   let connected = false;
@@ -341,7 +377,7 @@ function start() {
   function pressPage() {
     if (state.lensOn) {
       // Before the first scan lands there is nothing to keep, so end the attempt.
-      if (hint === undefined) return stop();
+      if (!scanned) return stop();
       scanVersion++;
       cancelFeedback();
       toast();
@@ -355,7 +391,10 @@ function start() {
     void scan();
   }
 
-  const mutate = observePage(() => void scan(), navigate, projection.onMutations);
+  const mutate = observePage(() => void scan(), navigate, (records) => {
+    mutationVersion++;
+    projection.onMutations(records);
+  });
   window.addEventListener("pagehide", () => {
     if (mode === "page") stop();
   });

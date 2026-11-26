@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import type { Locator, Page } from "playwright";
 import { collapse } from "../../../src/core/segment";
+import { cacheKeyFor } from "../../../bridge/cache";
+import { MIN_MARK_SENTENCES } from "../../../src/shared/config";
+import type { Doc } from "../../../src/shared/types";
 import type { SelectRequest, SelectResponse } from "../../../src/shared/wire";
 import type { CheckContext } from "../run";
 import type { Reference } from "./browser";
 import { atMost, trace, waitForState, withBrowser } from "./check";
+import { poll } from "./pixels";
 
 const marker = "[data-filler-cut-marker]";
 type Browser = Parameters<Parameters<typeof withBrowser>[1]>[0];
@@ -61,11 +65,25 @@ export function snapshot(root: Locator) {
 export async function referenceCut(context: CheckContext, browser: Browser, page: Page, name: Reference) {
   const index = (await context.bridge.requests()).length;
   const root = await browser.open(page, name);
-  const row = await context.bridge.waitForRequest(index);
+  const surface = { wang: "x-article", warp: "blog", perfloop: "x-post" }[name];
+  const article = await poll(async () => {
+    const raw = await page.locator("html").getAttribute("data-filler-cut-debug");
+    if (!raw) return;
+    const { docs } = JSON.parse(raw) as { docs: Doc[] };
+    return docs.find((doc) => doc.surface === surface);
+  }, Boolean, 5000).catch((error) => { throw new Error(`No extracted document for ${name}`, { cause: error }); });
+  const { title, sentences } = article!;
+  const { keyVersions, versions } = context.bridge;
+  const expected = await cacheKeyFor({ title, sentences }, sentences.length >= MIN_MARK_SENTENCES ? keyVersions : versions);
+  const row = (await poll(async () => (await context.bridge.requests()).slice(index).find(
+    ({ cacheKey }) => cacheKey === expected), Boolean, 45_000).catch((error) => {
+    throw new Error(`No selection request for ${name} (${expected})`, { cause: error });
+  }))!;
   const entry = await cacheEntry(context, row.cacheKey);
   const ids = pickedCuts(entry);
   assert.ok(ids.length, `${name} has no cuts (${row.result})`);
-  assert.equal((await waitForState(page, "faded")).faded, ids.length);
+  if (context.mode === "logged-in") await root.locator(marker).first().waitFor();
+  else assert.equal((await waitForState(page, "faded")).faded, ids.length);
   await assertCuts(root, entry);
   return { root, row, entry, ids };
 }

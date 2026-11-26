@@ -1,8 +1,6 @@
-// Open an X status with fewer than 6 sentences and the Anthropic article on
-// an unenabled site. Press no key. Both pages stay untouched and add 0 lines
-// to the bridge request log.
 import assert from "node:assert/strict";
 import type { Locator } from "playwright";
+import { MIN_SENTENCES } from "../../src/shared/config";
 import { segment } from "../../src/core/segment";
 import type { CheckContext } from "./run";
 import { roots, state } from "./lib/browser";
@@ -42,7 +40,7 @@ export default async function S12(context: CheckContext) {
     await page.goto(shortStatus, { waitUntil: "domcontentloaded" });
     const post = page.locator(roots.perfloop).first();
     const count = segment(await post.innerText({ timeout: 15_000 })).length;
-    assert.ok(count > 0 && count < 6, `Short status has ${count} sentences`);
+    assert.ok(count > 0 && count < MIN_SENTENCES, `Short status has ${count} sentences`);
     await waitForState(page, "idle", 3000);
     const shortPixels = await observeUntouched(post, context.evidence + "/short-status");
     assert.deepEqual((await trace(page)).map(({ view }) => view), ["idle"]);

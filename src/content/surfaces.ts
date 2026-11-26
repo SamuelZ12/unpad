@@ -12,6 +12,7 @@ interface SurfaceDoc {
   readonly title: string;
   readonly blocks: readonly Element[];
   readonly generic?: boolean;
+  readonly identity?: string | null;
 }
 
 const nonProse = "nav, header, footer, aside, form, figure, figcaption, pre, table, h1, h2, h3, h4, h5, h6, [hidden], [aria-hidden=true]";
@@ -21,28 +22,77 @@ const genericNonProse = `${nonProse}, ${editable}`;
 const prose = "p, li, blockquote";
 // Hand-written pages put the text straight into a layout table cell or <font> and break paragraphs with <br>.
 const bareNonProse = `nav, header, footer, aside, form, pre, script, style, noscript, textarea, template, ${privateText}`;
+export const xPostBody = "[data-testid=tweetText]";
+const xTweet = "article[data-testid=tweet]";
+const xShowMore = "[data-testid=tweet-text-show-more-link]";
 const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
 
-function xStatus(document: Document, path: string): SurfaceDoc[] {
-  const status = path.replace(/\/$/, "").toLowerCase();
-  const tweet = [...document.querySelectorAll(
-    "article[data-testid=tweet], main article",
-  )].find((article) => [...article.querySelectorAll<HTMLAnchorElement>("a[href]")].some((anchor) =>
-    anchor.closest("article") === article && anchor.pathname.toLowerCase() === status && (!!anchor.querySelector("time") || anchor.matches('[aria-current="page"]'))));
-  if (!tweet) return [];
+function quoteCard(element: Element, tweet: Element) {
+  for (let card = element.parentElement?.closest("[role=link]"); card && card !== tweet && tweet.contains(card);
+    card = card.parentElement?.closest("[role=link]")) {
+    if (card.querySelector(xPostBody)) return card;
+  }
+  return null;
+}
 
-  const inApp = tweet.matches("[data-testid=tweet]");
-  const article = tweet.querySelector(inApp ? xAppArticle : xPublicArticle);
-  if (article) {
-    const title = collapse(tweet.querySelector(inApp ? "[data-testid=twitter-article-title]" : "h1")?.textContent ?? "");
-    const blocks = [...article.querySelectorAll(inApp ? "[data-block=true]" : "p, li, blockquote")]
-      .filter((block) => !block.closest(nonProse) && !block.querySelector(prose));
-    return [{ root: article, title, blocks, surface: "x-article" }];
+function statusId(tweet: Element) {
+  const permalink = [...tweet.querySelectorAll<HTMLAnchorElement>(
+    'a[href*="/status/"]:has(time), a[aria-current=page][href*="/status/"]',
+  )].find((anchor) => anchor.closest("article") === tweet && !quoteCard(anchor, tweet));
+  return permalink?.pathname.match(/\/status\/(\d+)/)?.[1];
+}
+
+function truncated(post: Element, tweet: Element) {
+  const card = quoteCard(post, tweet);
+  return [...(card ?? tweet).querySelectorAll(xShowMore)].some((control) =>
+    control.closest("article") === tweet && quoteCard(control, tweet) === card && !control.closest(privateText));
+}
+
+function xSurfaces(document: Document, path: string): SurfaceDoc[] {
+  const docs: SurfaceDoc[] = [];
+  for (const article of document.querySelectorAll(`main ${xAppArticle}`)) {
+    const tweet = article.closest(xTweet);
+    if (!tweet || article.closest(privateText)) continue;
+    const heading = tweet.querySelector("[data-testid=twitter-article-title]");
+    const title = heading && !heading.closest(privateText) ? genericText(heading, (node) => node.data) : "";
+    const blocks = [...article.querySelectorAll("[data-block=true]")]
+      .filter((block) => !block.closest(genericNonProse) && !block.querySelector(prose));
+    const id = statusId(tweet);
+    docs.push({ root: article, title, blocks, surface: "x-article", identity: id ? `${id}:article` : undefined });
+  }
+  for (const post of document.querySelectorAll(`main ${xPostBody}`)) {
+    const tweet = post.closest(xTweet);
+    if (!tweet || post.closest(`${privateText}, ${xAppArticle}`) || truncated(post, tweet)) continue;
+    const id = statusId(tweet);
+    const kind = quoteCard(post, tweet) ? "quote" : "post";
+    const identity = id ? `${id}:${kind}` : null;
+    docs.push({ root: post, title: "", blocks: [post], surface: "x-post", identity });
   }
 
-  const post = tweet.querySelector(inApp ? "[data-testid=tweetText]" : "div[dir=auto][lang]");
-  return post ? [{ root: post, title: "", blocks: [post], surface: "x-post" }] : [];
+  // Public X uses different markup. Its permalink identifies the post.
+  if (!/^\/\w+\/status\/\d+\/?$/.test(path)) return docs;
+  const status = path.replace(/\/$/, "").toLowerCase();
+  const tweet = [...document.querySelectorAll("main article:not([data-testid=tweet])")].find((article) =>
+    [...article.querySelectorAll<HTMLAnchorElement>("a[href]")].some((anchor) =>
+      anchor.closest("article") === article && anchor.pathname.toLowerCase() === status &&
+      (!!anchor.querySelector("time") || anchor.matches('[aria-current="page"]'))));
+  if (!tweet) return docs;
+  const owned = (root: Element) => root.closest("article") === tweet && !root.closest(privateText);
+  const body = [...tweet.querySelectorAll(xPublicArticle)].find(owned);
+  if (body) {
+    const heading = tweet.querySelector("h1");
+    const title = heading && !heading.closest(privateText) ? genericText(heading, (node) => node.data) : "";
+    const blocks = [...body.querySelectorAll(prose)]
+      .filter((block) => !block.closest(genericNonProse) && !block.querySelector(prose));
+    docs.push({ root: body, title, blocks, surface: "x-article" });
+    return docs;
+  }
+  const post = [...tweet.querySelectorAll("div[dir=auto][lang]")].find(owned);
+  if (post && !truncated(post, tweet) && !docs.some(({ root }) => root === post)) {
+    docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
+  }
+  return docs;
 }
 
 function blog(document: Document, path: string): SurfaceDoc[] {
@@ -57,11 +107,11 @@ function blog(document: Document, path: string): SurfaceDoc[] {
   return [{ root: body, title, blocks, surface: "blog" }];
 }
 
-export function textWalker(root: Element, generic: boolean) {
+export function textWalker(root: Element, generic: boolean, excludePrivate = generic) {
   return root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, (node) => {
     if (node instanceof Text) return NodeFilter.FILTER_ACCEPT;
     if (!(node instanceof Element)) return NodeFilter.FILTER_SKIP;
-    if (node.matches(projectionSelector) || (generic && node.matches(privateText))) return NodeFilter.FILTER_REJECT;
+    if (node.matches(projectionSelector) || (excludePrivate && node.matches(privateText))) return NodeFilter.FILTER_REJECT;
     return generic && node.localName === "br" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
   });
 }
@@ -114,12 +164,8 @@ function genericArticle(document: Document, checkArticle: boolean, read: ReadTex
 }
 
 export function surfaces(document: Document, url: URL, checkArticle: boolean, read: ReadText) {
-  if (url.hostname === "x.com") {
-    if (!/^\/\w+\/status\/\d+\/?$/.test(url.pathname)) return { kind: "x-other-route" } as const;
-    return { kind: "surface", docs: xStatus(document, url.pathname) } as const;
-  }
-  const docs = url.hostname === "claude.com" ? blog(document, url.pathname) : genericArticle(document, checkArticle, read);
-  return { kind: "surface", docs } as const;
+  if (url.hostname === "x.com") return xSurfaces(document, url.pathname);
+  return url.hostname === "claude.com" ? blog(document, url.pathname) : genericArticle(document, checkArticle, read);
 }
 
 export function usesGenericSurface(url: URL) {

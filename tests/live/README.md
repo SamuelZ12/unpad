@@ -2,7 +2,7 @@
 
 The lens removes filler from the layout and marks key sentences in yellow. A small inline **···** marks each stretch of consecutive removed sentences. Hover to read its sentence count. Click it to expand the run in place. Hover over the muted text to tint the run and see its sentence count. Click the text to hide it again. Use Enter or Space to toggle a focused run. A click on a marked sentence does nothing.
 
-Toggle the lens with the switch in the toolbar popup or Option+Shift+F on macOS and Alt+Shift+F elsewhere. Hold Shift alone for 200 ms to see the original until release. The lens keeps a visible sentence at the same height as the text reflows. Turning the lens off restores the site's text and markup. The toolbar badge counts removed sentences and goes down when you expand a stretch.
+Toggle the lens with the switch in the toolbar popup or Option+Shift+F on macOS and Alt+Shift+F elsewhere. Hold Shift alone for 200 ms to see the original until release. The lens keeps a visible sentence at the same height as the text reflows. Turning the lens off restores the site's text and markup. The toolbar badge counts removed sentences in mounted posts and goes down when you expand a stretch.
 
 On an unenabled site, the popup switch or shortcut starts page mode without a permission prompt. Reloading or leaving ends page mode. To enable automatic cuts, open the popup, check **Always run on** for the site, and approve access in Chrome. On these added sites, the generic extractor needs five non-list prose blocks of at least 40 words. Pi checks whether the page is an article. A skipped page stays untouched. Page mode bypasses both article checks.
 
@@ -33,7 +33,7 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S9](S9.ts) | The bridge logs one `shown` and one `restore` per expanded sentence. Events queued during a bridge outage reach the restarted bridge. |
 | [S10](S10.ts) | Replay replaces the Wang cell five times. Signed-in X must remove it through real scrolling and bring it back. Cuts and the expanded run return within 200 ms with zero new requests. Toggle, second-status navigation, and Back produce zero React DOM errors. A logged-out run uses replay for this row. |
 | [S11](S11.ts) | A second status shows zero stale markers. Back recuts Wang from cache within 1 s. Replay and signed-in X navigate in the same document. |
-| [S12](S12.ts) | A short X post and an unenabled Anthropic page show no changes or bridge requests. |
+| [S12](S12.ts) | A short public X status and an unenabled Anthropic page show no changes or bridge requests. |
 | [S12-page-mode](S12-page-mode.ts) | The popup switch cuts the Anthropic article in page mode with the shared lens off. A focused editor blocks activation. Lens off restores its prose HTML apart from IDs Anthropic regenerates during hydration. A section link retains the cut and a new hash route or reload ends page mode. |
 | [S12-added-site](S12-added-site.ts) | Adding Anthropic cuts the open page and its reload. Removing access restores the original and clears the grant, script registration, and badge. The popup checkbox follows the active site and removal works from the Runs on list in another tab. |
 | [S12-page-check](S12-page-check.ts) | Added GitHub skips the Firecrawl README and caches the verdict. The GitHub profile sends zero selection requests. Added Anthropic still cuts the checked article. |
@@ -44,10 +44,11 @@ The harness prints the evidence directory and writes `results.log`. It also save
 | [S17](S17.ts) | Wang has visible yellow tint on kept sentences. Holding Shift clears it. Clicking a mark leaves it in place and logs nothing. Short Perfloop stays untouched. |
 | [S18](S18.ts) | Warp shows cuts and yellow marks together. Lens off clears the tint. Saves the cut page. |
 | [S19](S19.ts) | Page mode cuts the bare-text essays Jessica and Great Work. Both reflow without added blank gaps, keep their marks, toggle one run, and restore the exact original text and HTML. Saves each cut page. |
-| [S20](S20.ts) | The page-key fallback and popup switch on X home show the open-post hint, keep the shared lens unchanged, and send zero selection requests. A short post shows the plain toast. The popup checkbox adds and removes a routed site. After an extension reload, the switch restarts the open tab with the lens on. Saves the X home toast and light and dark popup screenshots for a cut article, X home, an unenabled site, and a Chrome internal page. |
+| [S20](S20.ts) | The page-key fallback and popup switch on an empty X home show “Nothing to cut here,” keep the shared lens unchanged, and send zero selection requests. A short post shows the same toast. The popup checkbox adds and removes a routed site. After an extension reload, the switch restarts the open tab with the lens on. Saves the X home toast and light and dark popup screenshots for a cut article, X home, an unenabled site, and a Chrome internal page. |
 | [S21](S21.ts) | Reload the same unpacked install after copying the new build over 0.2.0. The service worker reports the original shortcut under `toggle-lens` and saves both command lists. |
+| [S22](S22.ts) | A signed-in feed replay leaves a truncated preview and short posts unchanged. Expanding the preview sends one selection request. A rebuilt cell keeps its cuts and expanded text with zero requests. The quoted body cuts independently, the badge follows mounted posts, and links, body clicks, like, and reply still work. Lens off restores the exact post HTML. Saves light and dark screenshots. |
 
-S12 and its variants and S19 use fresh logged-out profiles in every suite. S20 uses replay and S21 uses an isolated upgrade profile. The logged-in suite also runs Warp-only rows in a fresh profile. S10 uses replay in the logged-out suite.
+S12 and its variants and S19 use fresh logged-out profiles in every suite. S20 and S22 use replay and S21 uses an isolated upgrade profile. The logged-in suite also runs Warp-only rows in a fresh profile. S10 uses replay in the logged-out suite.
 
 On the tested Chromium build, S21 fails because the 0.2.0 install's ⌥⇧F assignment is empty for both commands after reload. The popup offers **Set a shortcut** on the updated install.
 
@@ -70,6 +71,6 @@ X is built in. The harness grants `claude.com` as a user site before the Warp ch
 
 ## Why S10 uses two X modes
 
-Public X uses paragraphs inside `[data-article-body-html]`. Signed-in X uses Draft blocks inside `[data-testid=twitterArticleRichTextView]` and virtualizes its timeline cells. Replay uses captured signed-in markup and replaces the article with fresh nodes. The signed-in run exercises real React updates and checks the page console for DOM errors.
+Public X uses paragraphs inside `[data-article-body-html]`. Signed-in X uses Draft blocks inside `[data-testid=twitterArticleRichTextView]` and virtualizes its timeline cells. Replay uses captured signed-in markup and replaces the article with fresh nodes. S22 also replays a post expansion and updates the original text nodes while a cut is active. The signed-in run exercises real React updates and checks the page console for DOM errors.
 
 The reference pages are the [Wang X Article](https://x.com/alexandr_wang/status/2124636606959345776), [Perfloop X post](https://x.com/tsenart/status/2123483102936785334), [Warp article](https://claude.com/blog/how-warp-builds-self-improving-agents-on-claude), [Jessica Livingston](https://paulgraham.com/jessica.html), and [How to Do Great Work](https://paulgraham.com/greatwork.html).

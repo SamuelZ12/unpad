@@ -1,9 +1,19 @@
-import type { BrowserContext, Page } from "playwright";
+import type { BrowserContext, Page, Worker } from "playwright";
 
 export async function extensionWorker(context: BrowserContext) {
   const isExtension = (worker: import("playwright").Worker) => worker.url().startsWith("chrome-extension://");
   return context.serviceWorkers().find(isExtension) ??
     context.waitForEvent("serviceworker", { predicate: isExtension, timeout: 5000 });
+}
+
+export async function watchSelections(worker: Worker) {
+  await worker.evaluate(() => {
+    const selectRequests = Object.assign(globalThis, { selections: 0 });
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type === "select") selectRequests.selections++;
+    });
+  });
+  return () => worker.evaluate(() => (globalThis as unknown as { selections: number }).selections);
 }
 
 export async function extensionId(context: BrowserContext) {

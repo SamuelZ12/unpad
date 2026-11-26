@@ -9,15 +9,13 @@ export function observePage(scan: () => void, navigate: () => void, onMutations:
   function urlChanged() {
     if (href === location.href) return false;
     href = location.href;
-    clearTimeout(timer);
     firstMutation = undefined;
+    scheduleScan();
     navigate();
     return true;
   }
 
-  function changed(records: MutationRecord[]) {
-    if (!records.length) return;
-    onMutations(records);
+  function scheduleScan() {
     const now = performance.now();
     firstMutation ??= now;
     clearTimeout(timer);
@@ -27,13 +25,20 @@ export function observePage(scan: () => void, navigate: () => void, onMutations:
     }, Math.max(0, Math.min(quietMs, maxWaitMs - (now - firstMutation))));
   }
 
+  function changed(records: MutationRecord[]) {
+    if (!records.length) return;
+    onMutations(records);
+    scheduleScan();
+  }
+
   const observer = new MutationObserver((records) => {
     changed(records);
     urlChanged();
   });
+  const xAttributes = location.hostname === "x.com" ? ["href", "aria-current", "data-testid", "role", "dir", "lang", "data-article-body-html"] : [];
   observer.observe(document.documentElement, {
     subtree: true, childList: true, characterData: true,
-    attributes: true, attributeFilter: ["hidden", "aria-hidden", "class", "contenteditable"],
+    attributes: true, attributeFilter: ["hidden", "aria-hidden", "class", "contenteditable", ...xAttributes],
   });
 
   const navigation = (window as Window & { navigation?: EventTarget }).navigation;

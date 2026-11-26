@@ -4,13 +4,14 @@ import { collapse } from "../../src/core/segment";
 import { roots, urls } from "./lib/browser";
 import { atMost, waitForState, withBrowser } from "./lib/check";
 import { assertCuts, captureDomErrors, referenceCut, withBridge } from "./lib/cut";
-import { save, screenshot } from "./lib/pixels";
+import { poll, save, screenshot } from "./lib/pixels";
 import { replayNavigation } from "./lib/replay";
 import type { CheckContext } from "./run";
 
 export async function followStatus(context: CheckContext, page: Page, wang: Awaited<ReturnType<typeof referenceCut>>) {
   const documentId = () => page.evaluate(() => performance.timeOrigin);
   const before = await documentId();
+  const staleMarkers = await wang.root.locator("[data-filler-cut-marker]").elementHandles();
   const selector = context.mode === "logged-in"
     ? "[data-testid=twitterArticleRichTextView] a[href*='/status/']"
     : "main a[data-base-ui-tooltip-trigger][href*='/status/']";
@@ -43,7 +44,10 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
     .waitFor({ state: "attached", timeout: 6000 });
   await page.waitForFunction(() => !!document.documentElement.dataset.fillerCutState);
   assert.equal(await page.locator(roots.wang).count(), 0, "Wang still present on another status");
-  assert.equal(await page.locator("[data-filler-cut-marker]").count(), 0);
+  if (before === second) {
+    for (const marker of staleMarkers) assert.equal(await marker.evaluate((node) => node.isConnected), false);
+  }
+  if (context.mode === "replay") assert.equal(await page.locator("[data-filler-cut-marker]").count(), 0);
   await save(context.evidence + "/second-status", (await screenshot(page)).png);
 
   const cursor = (await context.bridge.requests()).length;
@@ -52,11 +56,12 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
   await page.waitForURL(urls.wang, { waitUntil: "commit", timeout: 10_000 });
   await page.locator(roots.wang).first().waitFor({ state: "attached" });
   const appeared = Date.now();
-  await waitForState(page, "faded");
+  await wang.root.locator("[data-filler-cut-marker]").first().waitFor({ timeout: 5000 });
   const elapsed = Date.now() - appeared;
-  const row = await context.bridge.waitForRequest(cursor);
-  assert.equal(row.source, "cache");
-  assert.equal(row.cacheKey, wang.row.cacheKey);
+  await waitForState(page, "faded", 1000);
+  const row = await poll(async () => (await context.bridge.requests()).slice(cursor).find(
+    ({ cacheKey }) => cacheKey === wang.row.cacheKey), Boolean, 5000);
+  assert.equal(row?.source, "cache");
   await assertCuts(wang.root, wang.entry);
   const back = await documentId();
   if (context.mode !== "logged-out") assert.ok(before === second && back === second, "X navigation replaced the document");

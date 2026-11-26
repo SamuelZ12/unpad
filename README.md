@@ -21,8 +21,8 @@ Open the sample article after you connect. In **About you**, you can tell Unpad 
 
 - Press **Option+Shift+F** on Mac or **Alt+Shift+F** on other platforms to turn cuts on or off. To see or set your shortcut, open `chrome://extensions/shortcuts`. You can also use the switch in the extension popup.
 - Select **···** to expand the original sentences. Select the expanded text to hide it again. Hold **Shift** to see the full text until you release it.
-- Yellow highlights mark key points. The toolbar badge counts hidden sentences.
-- Cuts run automatically on X after you connect. On another site, use the shortcut once, or check **Always run on** in the popup to enable future articles on that site.
+- Yellow highlights mark key points. The toolbar badge counts hidden sentences in the content currently loaded on the page.
+- Cuts run automatically after you connect, including in X timelines, profiles, search, and replies. Select **Show more** on a truncated post to make its full text available for cutting. Short posts stay untouched. On another site, use the shortcut once, or check **Always run on** in the popup to enable future articles on that site.
 
 ## Privacy
 

@@ -63,7 +63,7 @@ export async function testBridge() {
     return (await file.text()).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
   }
   return {
-    start, stop, data, archive, warmCache,
+    start, stop, data, archive, warmCache, versions: config.versions, keyVersions: config.keyVersions,
     clear: async () => {
       await archive();
       for (const name of await readdir(cache)) await rm(join(cache, name));

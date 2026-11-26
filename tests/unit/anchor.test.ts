@@ -36,7 +36,7 @@ test("every captured document has ranges matching its sentences", async () => {
       await page.goto(url);
       const docs = await page.evaluate(async (source) => {
         const { extract, rangeOf } = await import(source) as typeof import("../../src/content/anchor");
-        return (await extract(document, new URL(location.href))).docs.map(({ doc, sentences }) => ({
+        return (await extract(document, new URL(location.href))).map(({ doc, sentences }) => ({
           surface: doc.surface, sentences: doc.sentences,
           ranges: sentences.map((sentence) => rangeOf(sentence)!.toString().replace(/\s+/gu, " ").trim()),
         }));
@@ -45,6 +45,86 @@ test("every captured document has ranges matching its sentences", async () => {
       expect(docs[0].ranges).toEqual([...docs[0].sentences]);
       await page.unrouteAll();
     }
+  });
+}, 15_000);
+
+test("signed-in X finds each post body on timeline and status routes", async () => {
+  await withExtraction(async (page, module) => {
+    const html = await Bun.file("tests/fixtures/x/x-feed.html").text();
+    await page.route("https://x.com/**", (route) => route.fulfill({ contentType: "text/html", body: html }));
+    for (const path of ["/home", "/i/lists/1", "/patrickc", "/search?q=chess", "/patrickc/status/2126035198571946229"]) {
+      await page.goto("https://x.com" + path);
+      const docs = await page.evaluate(async (source) => {
+        const { extract } = await import(source) as typeof import("../../src/content/anchor");
+        const url = new URL(location.href);
+        const preview = document.querySelector("#long [data-testid=tweetText]")!;
+        // A preview can reach the sentence threshold before the user expands it.
+        preview.textContent = "Six sentences. Still truncated. Three now. And four. Five more. The last.";
+        const button = document.querySelector<HTMLButtonElement>("#long button")!;
+        button.setAttribute("role", "link");
+        const before = await extract(document, url);
+        button.click();
+        button.hidden = true;
+        const wrapper = document.createElement("div");
+        wrapper.append(button);
+        preview.after(wrapper);
+        const quote = document.querySelector<HTMLTemplateElement>("#quoted")!;
+        const main = document.querySelector("main")!;
+        main.append(quote.content.cloneNode(true));
+        document.body.append(preview.cloneNode(true));
+        const copy = preview.cloneNode(true) as HTMLElement;
+        copy.hidden = true;
+        main.querySelector("#long article")!.append(copy);
+        const draft = preview.cloneNode(true) as HTMLElement;
+        const hidden = document.createElement("span");
+        hidden.contentEditable = "true";
+        hidden.textContent = "This draft sentence is private.";
+        preview.append(hidden);
+        main.append(draft);
+        const article = document.createElement("div");
+        article.dataset.testid = "twitterArticleRichTextView";
+        article.innerHTML = `<div data-block="true">${draft.textContent}</div>`;
+        main.append(article);
+        const after = await extract(document, url);
+
+        const otherPost = document.querySelector("#long article")!.cloneNode(true) as Element;
+        otherPost.querySelector("header a")!.setAttribute("href", "/example/status/2");
+        main.append(otherPost);
+        const duplicate = (await extract(document, url)).at(-1)!.doc;
+        return {
+          before: before.length, after: after.map(({ doc }) => [doc.surface, doc.sentences.length]),
+          sameText: JSON.stringify(duplicate.sentences) === JSON.stringify(after[0].doc.sentences),
+          distinctKey: duplicate.key !== after[0].doc.key,
+        };
+      }, module);
+      expect(docs).toEqual({
+        before: 0, after: [["x-post", 9], ["x-post", 6]], sameText: true, distinctKey: true,
+      });
+    }
+  });
+}, 15_000);
+
+test("X finds the public permalink beside app replies and ignores it on profiles", async () => {
+  await withExtraction(async (page, module) => {
+    const fixture = await Bun.file("tests/fixtures/x/x-loggedout-wang.html").text();
+    const url = "https://x.com/alexandr_wang/status/2124636606959345776";
+    const reply = '<article data-testid="tweet"><div data-testid="tweetText">A reply starts here. This is next. And a third. Another one. Then five. That makes six.</div></article>';
+    await page.route(url, (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><main>${fixture}${reply}</main>` }));
+    await page.goto(url);
+    const result = await page.evaluate(async (source) => {
+      const { extract } = await import(source) as typeof import("../../src/content/anchor");
+      document.querySelector("main article h1")!.insertAdjacentHTML("beforeend", "<span hidden>Hidden title.</span>");
+      document.querySelector("[data-article-body-html]")!.insertAdjacentHTML("beforeend", "<p contenteditable>Private edit.</p>");
+      const status = (await extract(document, new URL(location.href))).map(({ doc }) => doc);
+      const heading = document.createElement("a");
+      heading.href = "/alexandr_wang";
+      heading.setAttribute("aria-current", "page");
+      document.querySelector("main article")!.prepend(heading);
+      const profile = (await extract(document, new URL(heading.href))).map(({ doc }) => doc.surface);
+      return { status: status.map((doc) => doc.surface), profile, privateText: JSON.stringify(status).includes("Hidden title.") ||
+        JSON.stringify(status).includes("Private edit.") };
+    }, module);
+    expect(result).toEqual({ status: ["x-post", "x-article"], profile: ["x-post"], privateText: false });
   });
 }, 15_000);
 
@@ -57,7 +137,7 @@ test("generic site mode needs five non-list blocks of at least 40 words", async 
     const docs = (html: string, checkArticle = true) => page.evaluate(async ({ module, html, checkArticle }) => {
       const { extract } = await import(module) as typeof import("../../src/content/anchor");
       document.querySelector("main")!.innerHTML = html;
-      return (await extract(document, new URL(location.href), checkArticle)).docs.length;
+      return (await extract(document, new URL(location.href), checkArticle)).length;
     }, { module, html, checkArticle });
 
     const sentence = "A useful sentence with enough words to exercise the paragraph rule.".split(" ");
@@ -84,7 +164,7 @@ test("a page of bare text split by <br> yields one document of whole sentences",
     await page.goto("https://paulgraham.com/jessica.html");
     const docs = await page.evaluate(async (source) => {
       const { extract, rangeOf } = await import(source) as typeof import("../../src/content/anchor");
-      return (await extract(document, new URL(location.href))).docs.map(({ doc, sentences }) => ({
+      return (await extract(document, new URL(location.href))).map(({ doc, sentences }) => ({
         surface: doc.surface, title: doc.title, sentences: doc.sentences,
         ranges: sentences.map((sentence) => rangeOf(sentence)!.toString().replace(/\s+/gu, " ").trim()),
       }));
@@ -123,7 +203,7 @@ test("whole removed paragraphs share one marker and leave their source nodes in 
       ]) {
         main.innerHTML = html;
         const projection = createProjection(() => {});
-        const [anchored] = (await extract(document, new URL(location.href))).docs;
+        const [anchored] = await extract(document, new URL(location.href));
         const text = anchored.sentences[3].slices[0].node;
         const parent = text.parentNode!;
         const visible = anchored.doc.sentences.filter((_, i) => [0, 4, 5, 6].includes(i)).join(" ");
@@ -133,7 +213,7 @@ test("whole removed paragraphs share one marker and leave their source nodes in 
         } as unknown as import("../../src/core/state").DocState;
         const state = { lensOn: true, holding: false, docs: new Map([[anchored.doc.key, docState]]) };
         projection.reconcile([anchored], state);
-        const [rebuilt] = (await extract(document, new URL(location.href), false, projection.read)).docs;
+        const [rebuilt] = await extract(document, new URL(location.href), false, projection.read);
         const marker = main.querySelector("[data-filler-cut-marker]");
         const cutContent = main.innerText.replace("···", "").replace(/\s+/gu, " ").trim();
         const children = [...main.querySelectorAll("p, br")].filter((node) => node.getClientRects().length > 0);
@@ -151,7 +231,7 @@ test("whole removed paragraphs share one marker and leave their source nodes in 
         const next = document.createTextNode(paragraphs[2]);
         parent.insertBefore(next, text);
         parent.removeChild(text);
-        const docs = (await extract(document, new URL(location.href), false, projection.read)).docs;
+        const docs = await extract(document, new URL(location.href), false, projection.read);
         projection.reconcile(docs, { ...state, lensOn: false });
         readings.push({ exactOriginal: main.innerHTML === html, replacement: next.parentNode === parent });
       }
