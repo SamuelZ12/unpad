@@ -69,6 +69,7 @@ function anchor(block: Element, { nodes, text }: ReturnType<typeof readBlock>) {
 
 export function createExtractor() {
   const posts = new WeakMap<Element, {
+    identity?: string;
     source: ReturnType<typeof readBlock>;
     result: Promise<AnchoredDoc | undefined>;
   }>();
@@ -76,23 +77,23 @@ export function createExtractor() {
   return async function extract(
     document: Document, url: URL, checkArticle = false, read: ReadText = (node) => node.data,
   ): Promise<AnchoredDoc[]> {
-    const docs = surfaces(document, url, checkArticle, read).map(({ root, surface, title, blocks, generic }) => {
+    const docs = surfaces(document, url, checkArticle, read).map(({ root, surface, title, blocks, generic, identity }) => {
       async function build(spans: ReturnType<typeof anchor>): Promise<AnchoredDoc | undefined> {
         if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
         const sentences = spans.map(({ text }) => text);
-        const key = await docKey(title, sentences);
+        const key = await docKey(identity ?? title, sentences);
         return { root, doc: { key, surface, title, sentences }, sentences: spans.map(({ sentence }) => sentence) };
       }
 
       if (surface !== "x-post") return build(blocks.flatMap((block) => anchor(block, readBlock(block, !!generic, read))));
       const source = readBlock(root, false, read);
       const previous = posts.get(root);
-      if (previous && source.text === previous.source.text && source.nodes.length === previous.source.nodes.length &&
+      if (previous && identity === previous.identity && source.text === previous.source.text && source.nodes.length === previous.source.nodes.length &&
         source.nodes.every(({ node, length }, i) => node === previous.source.nodes[i].node && length === previous.source.nodes[i].length)) {
         return previous.result;
       }
       const result = build(anchor(root, source));
-      posts.set(root, { source, result });
+      posts.set(root, { identity, source, result });
       void result.catch(() => { if (posts.get(root)?.result === result) posts.delete(root); });
       return result;
     });

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import type { Page, Worker } from "playwright";
+import type { Page } from "playwright";
 import type { CheckContext } from "./run";
 import { addFromPopup, extensionWorker, reloadExtension, withActionBrowser } from "./lib/action";
+import { watchSelections } from "./lib/extension";
 import { registrations } from "./lib/sites";
 import { launch, urls, xHomeUrl } from "./lib/browser";
 import { toggle, waitForState } from "./lib/check";
@@ -10,16 +11,6 @@ import { poll } from "./lib/pixels";
 
 const unenabled = "https://example.com/";
 const toast = (page: Page) => page.locator("filler-cut-toast").getByRole("status");
-
-async function watchSelections(worker: Worker) {
-  await worker.evaluate(() => {
-    const selectRequests = Object.assign(globalThis, { selections: 0 });
-    chrome.runtime.onMessage.addListener((message) => {
-      if (message?.type === "select") selectRequests.selections++;
-    });
-  });
-  return () => worker.evaluate(() => (globalThis as unknown as { selections: number }).selections);
-}
 
 async function captures(popup: Page, file: string, expected: string | RegExp, restricted = false) {
   await popup.waitForFunction(({ expected, regex }) => {

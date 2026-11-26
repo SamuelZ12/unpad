@@ -61,15 +61,54 @@ test("signed-in X finds each post body on timeline and status routes", async () 
         // A preview can reach the sentence threshold before the user expands it.
         preview.textContent = "Six sentences. Still truncated. Three now. And four. Five more. The last.";
         const before = await extract(document, url);
-        document.querySelector<HTMLButtonElement>("#long button")!.click();
+        const button = document.querySelector<HTMLButtonElement>("#long button")!;
+        button.click();
+        button.hidden = true;
+        preview.after(button);
         const quote = document.querySelector<HTMLTemplateElement>("#quoted")!;
-        document.querySelector("main")!.append(quote.content.cloneNode(true));
+        const main = document.querySelector("main")!;
+        main.append(quote.content.cloneNode(true));
         document.body.append(preview.cloneNode(true));
+        const copy = preview.cloneNode(true) as HTMLElement;
+        copy.hidden = true;
+        main.append(copy);
         const after = await extract(document, url);
-        return { before: before.length, after: after.map(({ doc }) => [doc.surface, doc.sentences.length]) };
+
+        const otherPost = document.querySelector("#long article")!.cloneNode(true) as Element;
+        otherPost.querySelector("header a")!.setAttribute("href", "/example/status/2");
+        main.append(otherPost);
+        const duplicate = (await extract(document, url)).at(-1)!.doc;
+        return {
+          before: before.length, after: after.map(({ doc }) => [doc.surface, doc.sentences.length]),
+          sameText: JSON.stringify(duplicate.sentences) === JSON.stringify(after[0].doc.sentences),
+          distinctKey: duplicate.key !== after[0].doc.key,
+        };
       }, module);
-      expect(docs).toEqual({ before: 0, after: [["x-post", 9], ["x-post", 6]] });
+      expect(docs).toEqual({
+        before: 0, after: [["x-post", 9], ["x-post", 6]], sameText: true, distinctKey: true,
+      });
     }
+  });
+}, 15_000);
+
+test("X finds the public permalink beside app replies and ignores it on profiles", async () => {
+  await withExtraction(async (page, module) => {
+    const fixture = await Bun.file("tests/fixtures/x/x-loggedout-wang.html").text();
+    const url = "https://x.com/alexandr_wang/status/2124636606959345776";
+    const reply = '<article data-testid="tweet"><div data-testid="tweetText">A reply starts here. This is next. And a third. Another one. Then five. That makes six.</div></article>';
+    await page.route(url, (route) => route.fulfill({ contentType: "text/html", body: `<!doctype html><main>${fixture}${reply}</main>` }));
+    await page.goto(url);
+    const result = await page.evaluate(async (source) => {
+      const { extract } = await import(source) as typeof import("../../src/content/anchor");
+      const kinds = async (url: URL) => (await extract(document, url)).map(({ doc }) => doc.surface);
+      const status = await kinds(new URL(location.href));
+      const heading = document.createElement("a");
+      heading.href = "/alexandr_wang";
+      heading.setAttribute("aria-current", "page");
+      document.querySelector("main article")!.prepend(heading);
+      return { status, profile: await kinds(new URL(heading.href)) };
+    }, module);
+    expect(result).toEqual({ status: ["x-post", "x-article"], profile: ["x-post"] });
   });
 }, 15_000);
 

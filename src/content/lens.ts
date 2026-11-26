@@ -42,23 +42,25 @@ function start() {
   let lastStatus: string | undefined;
   const toast = createToast((change) => mutate(change));
 
-  function visibleState() {
-    return {
-      ...state,
-      docs: new Map(anchoredDocs.flatMap(({ doc }) => {
-        const entry = state.docs.get(doc.key);
-        return entry ? [[doc.key, entry]] : [];
-      })),
-    };
+  function mountedEntries(): DocState[] {
+    return anchoredDocs.flatMap(({ doc }) => {
+      const entry = state.docs.get(doc.key);
+      return entry ? [entry] : [];
+    });
   }
 
-  function currentStatus(visible: PageState = visibleState()): PageStatus {
-    return scanError ? { kind: "failed", reason: scanError } : pageStatus(visible, scanned);
+  function visibleState(mounted = mountedEntries()): PageState {
+    return { ...state, docs: new Map(mounted.map((entry) => [entry.doc.key, entry])) };
   }
 
-  function snapshot(visible?: PageState): PageSnapshot {
-    const status = mode === "site" && !connected ? undefined : mode ? currentStatus(visible) : lastAttempt;
-    return { mode, lensOn: state.lensOn, status };
+  function currentStatus(mounted = mountedEntries()): PageStatus {
+    return scanError ? { kind: "failed", reason: scanError } : pageStatus(state, scanned, mounted);
+  }
+
+  function snapshot(mounted?: DocState[]): PageSnapshot {
+    const { lensOn } = state;
+    if (mode === "site" && !connected) return { mode, lensOn };
+    return { mode, lensOn, status: mode ? currentStatus(mounted) : lastAttempt };
   }
 
   type RunAction = Parameters<typeof projection.reconcile>[2];
@@ -70,18 +72,18 @@ function start() {
     if (orphaned()) return;
     const control = mutate(() => projection.reconcile(anchoredDocs, state, action));
     const html = document.documentElement;
-    const visible = visibleState();
-    const current = view(visible);
+    const mounted = mountedEntries();
+    const current = view(visibleState(mounted));
     html.dataset.fillerCutState = current;
     let fadedTotal = 0;
     let markedTotal = 0;
-    for (const { doc, picks } of visible.docs.values()) {
+    for (const { doc, picks } of mounted) {
       const faded = fadedIds(state, doc.key).length;
       const marks = markedIds(state, doc.key).length;
       fadedTotal += faded;
       markedTotal += marks;
       const bridge = bridgeForDoc.get(doc.key);
-      if (!bridge || (!faded && !marks) || picks?.kind !== "ready" || shown.has(doc.key)) continue;
+      if (!bridge || (!faded && !marks) || picks.kind !== "ready" || shown.has(doc.key)) continue;
       shown.add(doc.key);
       void log(bridge, {
         type: "shown", cacheKey: picks.cacheKey,
@@ -90,7 +92,7 @@ function start() {
     }
     html.dataset.fillerCutFaded = String(fadedTotal);
     html.dataset.fillerCutMarked = String(markedTotal);
-    const page = snapshot(visible);
+    const page = snapshot(mounted);
     const signature = JSON.stringify([href, page, current]);
     if (signature !== lastStatus) {
       lastStatus = signature;

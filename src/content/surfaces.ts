@@ -12,6 +12,7 @@ interface SurfaceDoc {
   readonly title: string;
   readonly blocks: readonly Element[];
   readonly generic?: boolean;
+  readonly identity?: string;
 }
 
 const nonProse = "nav, header, footer, aside, form, figure, figcaption, pre, table, h1, h2, h3, h4, h5, h6, [hidden], [aria-hidden=true]";
@@ -21,41 +22,48 @@ const genericNonProse = `${nonProse}, ${editable}`;
 const prose = "p, li, blockquote";
 // Hand-written pages put the text straight into a layout table cell or <font> and break paragraphs with <br>.
 const bareNonProse = `nav, header, footer, aside, form, pre, script, style, noscript, textarea, template, ${privateText}`;
+export const xPostBody = "[data-testid=tweetText]";
+const xShowMore = "[data-testid=tweet-text-show-more-link]";
 const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
 
 function xSurfaces(document: Document, path: string): SurfaceDoc[] {
-  const posts = document.querySelectorAll("main [data-testid=tweetText]");
-  const article = document.querySelector(`main ${xAppArticle}`);
   const docs: SurfaceDoc[] = [];
-  if (article) {
+  for (const article of document.querySelectorAll(`main ${xAppArticle}`)) {
     const title = collapse(article.closest("article")?.querySelector("[data-testid=twitter-article-title]")?.textContent ?? "");
     const blocks = [...article.querySelectorAll("[data-block=true]")]
       .filter((block) => !block.closest(nonProse) && !block.querySelector(prose));
     docs.push({ root: article, title, blocks, surface: "x-article" });
   }
-  for (const post of posts) {
-    const more = "[data-testid=tweet-text-show-more-link]";
-    if (post.nextElementSibling?.matches(more) || post.querySelector(more)) continue;
-    docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
+  for (const post of document.querySelectorAll(`main ${xPostBody}`)) {
+    if (post.closest(privateText)) continue;
+    const more = post.nextElementSibling?.matches(xShowMore) ? post.nextElementSibling : post.querySelector(xShowMore);
+    if (more && !more.closest(privateText)) continue;
+    const tweet = post.closest("article[data-testid=tweet]");
+    const permalink = tweet?.querySelector<HTMLAnchorElement>('a[href*="/status/"]:has(time), a[aria-current=page][href*="/status/"]');
+    const position = tweet ? Array.from(tweet.querySelectorAll(xPostBody)).indexOf(post) : 0;
+    const identity = permalink ? `${permalink.pathname}:${position}` : undefined;
+    docs.push({ root: post, title: "", blocks: [post], surface: "x-post", identity });
   }
-  if (posts.length || article) return docs;
 
   // Public X uses different markup. Its permalink identifies the post.
+  if (!/^\/\w+\/status\/\d+\/?$/.test(path)) return docs;
   const status = path.replace(/\/$/, "").toLowerCase();
   const tweet = [...document.querySelectorAll("main article:not([data-testid=tweet])")].find((article) =>
     [...article.querySelectorAll<HTMLAnchorElement>("a[href]")].some((anchor) =>
       anchor.closest("article") === article && anchor.pathname.toLowerCase() === status &&
       (!!anchor.querySelector("time") || anchor.matches('[aria-current="page"]'))));
-  if (!tweet) return [];
+  if (!tweet) return docs;
   const body = tweet.querySelector(xPublicArticle);
   if (body) {
     const title = collapse(tweet.querySelector("h1")?.textContent ?? "");
     const blocks = [...body.querySelectorAll(prose)].filter((block) => !block.closest(nonProse) && !block.querySelector(prose));
-    return [{ root: body, title, blocks, surface: "x-article" }];
+    docs.push({ root: body, title, blocks, surface: "x-article" });
+    return docs;
   }
   const post = tweet.querySelector("div[dir=auto][lang]");
-  return post ? [{ root: post, title: "", blocks: [post], surface: "x-post" }] : [];
+  if (post && !docs.some(({ root }) => root === post)) docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
+  return docs;
 }
 
 function blog(document: Document, path: string): SurfaceDoc[] {

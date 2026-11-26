@@ -56,15 +56,17 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
       const key = JSON.stringify(next.map(({ removed, restored }) => [removed, restored]));
       const same = docs.length === layout.length && docs.every((doc, i) => sameAnchors(doc, layout[i]));
       const changed = !same || key !== applied || cut.dirty;
+      let control: HTMLElement | undefined;
       if (changed) {
         const hasRuns = next.some(({ removed, restored }) => removed.length || restored.length);
         let pin: Pin | undefined = action;
         if (action?.event.type !== "restore" && (hadRuns || hasRuns)) {
           pin = readingPin(docs, state) ?? action;
         }
+        const focus = action ?? cut.focusedRun();
         cut.clear();
         cut.apply(next);
-        const control = action && cut.control(action.sentence, action.event);
+        control = focus && cut.control(focus.sentence, focus.event);
         if (pin) {
           const rect = firstRect(pin.sentence, cut.locate) ??
             (pin === action ? control?.getBoundingClientRect() : undefined);
@@ -83,7 +85,7 @@ export function createProjection(toggleRun: (action: RunAction) => void) {
         if (ranges.length) (paintMarks ??= createMarkPainter())(ranges);
         else paintMarks?.([]);
       }
-      return changed && action ? cut.control(action.sentence, action.event) : undefined;
+      return control;
     },
   };
 }

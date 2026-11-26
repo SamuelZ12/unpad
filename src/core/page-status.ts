@@ -1,4 +1,4 @@
-import { candidates, marks, type PageState } from "./state";
+import { candidates, marks, type DocState, type PageState } from "./state";
 
 export type PageStatus =
   | { kind: "reading" }
@@ -6,14 +6,16 @@ export type PageStatus =
   | { kind: "nothing-to-cut" }
   | { kind: "failed"; reason: string };
 
-export function pageStatus(state: PageState, scanned: boolean): PageStatus {
+export function pageStatus(
+  state: PageState, scanned: boolean, mounted: Iterable<DocState> = state.docs.values(),
+): PageStatus {
   if (!scanned) return { kind: "reading" };
   let removed = 0;
   let marked = 0;
   let expanded = false;
   let waiting = false;
   let reason: string | undefined;
-  for (const entry of state.docs.values()) {
+  for (const entry of mounted) {
     removed += candidates(entry).length;
     marked += marks(entry).length;
     expanded ||= entry.restored.size > 0;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import { collapse } from "../../src/core/segment";
 import { roots, urls } from "./lib/browser";
-import { atMost, waitForState, withBrowser } from "./lib/check";
+import { atMost, withBrowser } from "./lib/check";
 import { assertCuts, captureDomErrors, referenceCut, withBridge } from "./lib/cut";
 import { poll, save, screenshot } from "./lib/pixels";
 import { replayNavigation } from "./lib/replay";
@@ -11,6 +11,7 @@ import type { CheckContext } from "./run";
 export async function followStatus(context: CheckContext, page: Page, wang: Awaited<ReturnType<typeof referenceCut>>) {
   const documentId = () => page.evaluate(() => performance.timeOrigin);
   const before = await documentId();
+  const staleMarkers = await wang.root.locator("[data-filler-cut-marker]").elementHandles();
   const selector = context.mode === "logged-in"
     ? "[data-testid=twitterArticleRichTextView] a[href*='/status/']"
     : "main a[data-base-ui-tooltip-trigger][href*='/status/']";
@@ -43,6 +44,9 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
     .waitFor({ state: "attached", timeout: 6000 });
   await page.waitForFunction(() => !!document.documentElement.dataset.fillerCutState);
   assert.equal(await page.locator(roots.wang).count(), 0, "Wang still present on another status");
+  if (before === second) {
+    for (const marker of staleMarkers) assert.equal(await marker.evaluate((node) => node.isConnected), false);
+  }
   if (context.mode !== "logged-in") assert.equal(await page.locator("[data-filler-cut-marker]").count(), 0);
   await save(context.evidence + "/second-status", (await screenshot(page)).png);
 
@@ -52,7 +56,7 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
   await page.waitForURL(urls.wang, { waitUntil: "commit", timeout: 10_000 });
   await page.locator(roots.wang).first().waitFor({ state: "attached" });
   const appeared = Date.now();
-  await waitForState(page, "faded");
+  await wang.root.locator("[data-filler-cut-marker]").first().waitFor({ timeout: 5000 });
   const elapsed = Date.now() - appeared;
   const row = await poll(async () => (await context.bridge.requests()).slice(cursor).find(
     ({ cacheKey }) => cacheKey === wang.row.cacheKey), Boolean, 5000);

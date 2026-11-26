@@ -2,12 +2,12 @@ import { rangeOf, type SentenceAnchor, type TextSlice } from "./anchor";
 import type { DocKey, SentenceId } from "../shared/types";
 import type { RunEvent } from "../core/state";
 import { isEditing } from "./keys";
+import { xPostBody } from "./surfaces";
 
 export const markerSelector = "[data-filler-cut-marker]";
 const restoredSelector = "[data-filler-cut-restored]";
 const linkSelector = "a, [role=link]";
 const interactive = `${linkSelector}, button, [role=button]:not(${restoredSelector}), summary, label`;
-const xPostBody = "[data-testid=tweetText]";
 const media = "img, svg, video, audio, iframe, canvas, input, select, textarea, button, hr";
 
 type Activate = (event: RunEvent, sentence: SentenceAnchor, top: number) => void;
@@ -21,17 +21,24 @@ interface ProjectedText {
   edited: boolean;
 }
 
-function* postRunSlices(block: Element, first: TextSlice, last: TextSlice): Iterable<TextSlice> {
-  // Preserve the space around a run, but remove paragraph breaks between its sentences.
+function* postRunSlices(block: Element, slices: readonly TextSlice[]): Iterable<TextSlice> {
+  // X uses pre-wrapped text. Remove whitespace between sentences even across text nodes.
   const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
-  walker.currentNode = first.node;
-  for (let node = first.node; node; node = walker.nextNode() as Text) {
-    yield {
-      node,
-      start: node === first.node ? first.start : 0,
-      end: node === last.node ? last.end : node.length,
-    };
-    if (node === last.node) break;
+  let previous: TextSlice | undefined;
+  for (const slice of slices) {
+    if (previous && previous.node !== slice.node &&
+      previous.node.compareDocumentPosition(slice.node) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      walker.currentNode = previous.node;
+      if (!previous.node.data.slice(previous.end).trim()) {
+        yield { node: previous.node, start: previous.end, end: previous.node.length };
+      }
+      for (let node = walker.nextNode() as Text | null; node && node !== slice.node; node = walker.nextNode() as Text | null) {
+        if (!node.data.trim()) yield { node, start: 0, end: node.length };
+      }
+      if (!slice.node.data.slice(0, slice.start).trim()) yield { node: slice.node, start: 0, end: slice.start };
+    }
+    yield slice;
+    previous = slice;
   }
 }
 
@@ -217,16 +224,16 @@ export function createCut(activate: Activate) {
           const sentence = sentences[ids[0] - 1];
           if (!sentence.slices[0].node.isConnected) continue;
           const run: Run = { event: { type, docKey, ids }, sentence, parts: [] };
-          const last = sentences[ids.at(-1)! - 1];
           const post = sentence.block.matches(xPostBody);
           const group = ids.map((id) => sentences[id - 1]);
+          const source = group.flatMap(({ slices }) => slices);
+          if (post && source.some(({ node, end }) => !sentence.block.contains(node) || end > node.length)) continue;
           for (const { block } of group) {
             blocks.add(block);
             if (type === "restore") foldedBlocks.add(block);
           }
           const slices = post && type === "restore"
-            ? postRunSlices(sentence.block, sentence.slices[0], last.slices.at(-1)!)
-            : group.flatMap(({ slices }) => slices);
+            ? postRunSlices(sentence.block, source) : source;
           for (const slice of slices) {
             if (!slice.node.isConnected || slice.start === slice.end) continue;
             const link = slice.node.parentElement?.closest(linkSelector);
@@ -286,6 +293,7 @@ export function createCut(activate: Activate) {
   }
 
   return {
+    focusedRun: () => controlRun(document.activeElement),
     control: (sentence: SentenceAnchor, event: RunEvent) => starts.get(sentence.block)?.get(event.ids[0]),
     read(node: Text) {
       const source = projected.get(node);
