@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { CheckContext } from "./run";
 import { extensionWorker, addFromPopup, withActionBrowser } from "./lib/action";
+import { xHomeUrl } from "./lib/browser";
 import { waitForState } from "./lib/check";
 import { assertCuts, cacheEntry, pickedCuts, proseHtml, withBridge } from "./lib/cut";
 import { marked } from "./lib/marks";
@@ -90,8 +91,8 @@ export default async function S12AddedSite(context: CheckContext) {
     assert.equal((await context.bridge.requests()).length - index, 2);
 
     await other.bringToFront();
-    await openSite(other, "https://claude.com/");
-    assert.equal(new URL(other.url()).hostname, "claude.com");
+    await other.route(xHomeUrl, (route) => route.fulfill({ contentType: "text/html", body: "<p>Home</p>" }));
+    await openSite(other, xHomeUrl);
     await setting(other, true, false);
     return `${match} granted and registered; ${faded.faded}/${entry.sentences.length} removed on add and on reload; 2 selects, second a cache hit; removal restored original HTML and reload sent 0 selects; popup checkbox matched added, other, and built-in tabs`;
   }));

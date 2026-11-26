@@ -18,6 +18,6 @@ export function createLog(url: string) {
       return { ...event, id, at, pageView, url };
     }));
     const queued = await chrome.runtime.sendMessage({ type: "events", events: entries });
-    if (!queued) throw new Error("Could not queue Filler Cut event");
+    if (!queued) throw new Error("Could not queue Unpad event");
   };
 }

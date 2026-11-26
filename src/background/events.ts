@@ -1,4 +1,4 @@
-import { BRIDGE_URL } from "../shared/config";
+import { initialEngine, readPreferences } from "./preferences";
 import type { LogEvent } from "../shared/types";
 import { parseEventsRequest, parseEventsResponse } from "../shared/wire";
 
@@ -21,19 +21,22 @@ export function enqueueEvents(queue: EventQueue) {
   };
 }
 
-export function chromeEventQueue() {
+export function chromeEventQueue(url: string) {
+  const storageKey = initialEngine?.kind === "bridge" && url === initialEngine.url ? "pendingEvents" : `pendingEvents:${url}`;
   // Persist before posting because Chrome may stop the worker between events.
   return enqueueEvents({
     async load() {
-      const { pendingEvents } = await chrome.storage.local.get("pendingEvents");
+      const { [storageKey]: pendingEvents } = await chrome.storage.local.get(storageKey);
       return parseEventsRequest({ events: pendingEvents })?.events ?? [];
     },
     async save(pendingEvents) {
-      await chrome.storage.local.set({ pendingEvents });
+      await chrome.storage.local.set({ [storageKey]: pendingEvents });
     },
     async post(events) {
       try {
-        const response = await fetch(new URL("/events", BRIDGE_URL), {
+        const { engine } = await readPreferences();
+        if (engine?.kind !== "bridge" || engine.url !== url) return false;
+        const response = await fetch(new URL("/events", url), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ events }),

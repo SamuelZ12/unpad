@@ -1,5 +1,3 @@
-export const BRIDGE_URL = process.env.BRIDGE_URL ?? "http://127.0.0.1:18931";
-
 export const TOGGLE_COMMAND = "toggle-lens";
 
 export const MIN_SENTENCES = 6;

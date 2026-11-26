@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { preapproveHost, extensionId, requestHostFromOptions } from "./extension";
 import { chromium, type Page, type ViewportSize } from "playwright";
 
 export const xHomeUrl = "https://x.com/home";
@@ -66,7 +67,22 @@ export async function launch(
         await route.fulfill({ contentType: "text/html", body });
       });
     }
+    let warpEnabled: Promise<void> | undefined;
+    async function addWarpSite() {
+      const match = "https://claude.com:443/*";
+      await preapproveHost(context, match);
+      const settings = await context.newPage();
+      try {
+        await settings.goto(`chrome-extension://${await extensionId(context)}/options.html`);
+        await requestHostFromOptions(settings, match);
+        await settings.waitForFunction(async (id) =>
+          (await chrome.scripting.getRegisteredContentScripts({ ids: [id] })).length > 0, match);
+      } finally {
+        await settings.close();
+      }
+    }
     async function open(page: Page, name: Reference) {
+      if (name === "warp") await (warpEnabled ??= addWarpSite());
       if (!temporary) await Bun.sleep(Math.max(0, lastLoggedInLoad + 3000 - Date.now()));
       const response = await page.goto(urls[name], { waitUntil: "domcontentloaded" }).finally(() => {
         if (!temporary) lastLoggedInLoad = Date.now();

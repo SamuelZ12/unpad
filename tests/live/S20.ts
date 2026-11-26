@@ -30,7 +30,7 @@ async function captures(popup: Page, file: string, expected: string | RegExp, re
   assert.equal(await popup.getByRole("checkbox").isVisible(), !restricted);
   assert.equal(await popup.getByRole("link", { name: "Change shortcut" }).count(), 1);
   assert.deepEqual(await popup.locator("#sites li").evaluateAll((rows) =>
-    rows.map((row) => [...row.children].map(({ textContent }) => textContent))), [["x.com", "built in"], ["claude.com", "built in"]]);
+    rows.map((row) => [...row.children].map(({ textContent }) => textContent))), [["x.com", "built in"]]);
   // Chrome's extension stylesheet shrinks body text to 75% unless the popup sets it.
   assert.equal(await popup.locator("#status").evaluate((status) => getComputedStyle(status).fontSize), "13px");
   for (const colorScheme of ["light", "dark"] as const) {
@@ -124,7 +124,7 @@ export default async function S20(context: CheckContext) {
 
       await page.goto("chrome://version/");
       await action.withPopup(page, (popup) =>
-        captures(popup, context.evidence + "/chrome", "Filler Cut can't run on this page.", true));
+        captures(popup, context.evidence + "/chrome", "Unpad can’t run on this page.", true));
 
       await page.goto(urls.wang);
       const { faded } = await waitForState(page, "faded");
@@ -141,7 +141,7 @@ export default async function S20(context: CheckContext) {
       await reloadExtension(tabs);
       await action.withPopup(page, async (popup) => {
         await popup.evaluate(() => chrome.storage.local.set({ lensOn: true }));
-        await popup.getByText("Use the switch to start Filler Cut here.").waitFor({ timeout: 5000 });
+        await popup.getByText("Use the switch to start Unpad here.").waitFor({ timeout: 5000 });
         const lens = popup.getByRole("switch");
         assert.equal(await lens.getAttribute("aria-checked"), "false");
         await lens.click();

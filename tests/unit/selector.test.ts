@@ -59,7 +59,7 @@ test("formats the prompt and retries invalid output once", async () => {
   await expect(select(doc, "", "", async () => {
     attempts++;
     return "[]";
-  })).rejects.toThrow("Pi returned an invalid selection twice");
+  })).rejects.toThrow("invalid selection twice");
   expect(attempts).toBe(2);
 });
 

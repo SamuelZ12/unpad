@@ -7,7 +7,8 @@ import { cacheKeyFor, readCache, writeCache } from "./cache";
 import { loadConfig } from "./config";
 import type { BridgeConfig } from "./config";
 import { createEventLog } from "./events";
-import { runPi, select, selectWithKey } from "./selector";
+import { runPi } from "./selector";
+import { InvalidSelection, select, selectWithKey } from "../src/shared/selector";
 import type { PiSpawn } from "./selector";
 
 interface RequestLog {
@@ -74,6 +75,10 @@ export async function startBridge(config: BridgeConfig, spawn?: PiSpawn) {
     port: config.port,
     idleTimeout: 60,
     async fetch(request) {
+      const origin = request.headers.get("Origin");
+      if (origin !== null && !/^chrome-extension:\/\/[a-p]{32}$/.test(origin)) {
+        return Response.json({ error: "Origin not allowed" }, { status: 403 });
+      }
       const path = new URL(request.url).pathname;
       const start = performance.now();
       const log: RequestLog = {
@@ -102,6 +107,9 @@ export async function startBridge(config: BridgeConfig, spawn?: PiSpawn) {
             log.result = picks.selection.kind;
             return Response.json(picks);
           } catch (error) {
+            if (error instanceof InvalidSelection) {
+              return fail(502, `Pi returned an invalid selection twice: ${JSON.stringify(error.raw.slice(0, 300))}`);
+            }
             return fail(502, error instanceof Error ? error.message : "Selection failed");
           }
         }
@@ -130,5 +138,5 @@ export async function startBridge(config: BridgeConfig, spawn?: PiSpawn) {
 
 if (import.meta.main) {
   const server = await startBridge(await loadConfig());
-  console.log(`Filler Cut bridge listening on ${server.url}`);
+  console.log(`Unpad bridge listening on ${server.url}`);
 }

@@ -1,0 +1,93 @@
+import { hostPermission, issue, type Engine } from "../shared/connection";
+import { chatgptOrigins, chatGPTModels, currentChatGPTSession, disconnectChatGPT, finishChatGPT, savedAccounts, startChatGPT } from "./chatgpt";
+import { parseBridge, publicEngine, readPreferences } from "./preferences";
+import { askProvider, providers, recognizeKey } from "./providers";
+
+export function createSettings(trusted: Promise<unknown>) {
+  let work = Promise.resolve<unknown>(undefined);
+  function run<T>(fn: () => Promise<T>) {
+    const next = work.then(() => trusted).then(fn);
+    work = next.catch(() => {});
+    return next;
+  }
+
+  const status = async () => {
+    const { engine, about } = await readPreferences();
+    const chatgptSession = await currentChatGPTSession();
+    const { selectionIssue } = await chrome.storage.session.get("selectionIssue");
+    const accounts = (await savedAccounts()).map(({ clientId, email }) => ({ clientId, email }));
+    return { engine: publicEngine(engine), about, accounts, account: chatgptSession?.clientId, issue: selectionIssue as string | undefined };
+  };
+
+  async function setEngine(engine: Engine | null) {
+    const { engine: current } = await readPreferences();
+    const revoked = current?.kind !== "chatgpt" || await disconnectChatGPT();
+    await chrome.storage.session.remove("selectionIssue");
+    await chrome.storage.local.set({ engine });
+    return revoked ? {} : { error: "Signed out here. Disconnect the app in ChatGPT settings to finish." };
+  }
+
+  return {
+    status,
+    change: (message: { action?: string; value?: unknown }) => run(async () => {
+      const { action, value } = message;
+      const { engine } = await readPreferences();
+      try {
+        switch (action) {
+          case "chatgpt":
+            if (engine && engine.kind !== "chatgpt") return { error: issue.auth };
+            if (!await chrome.permissions.contains({ origins: chatgptOrigins })) return { error: issue.permission };
+            await startChatGPT(typeof value === "string" ? value : undefined);
+            return {};
+          case "key": {
+            const key = typeof value === "string" ? value.trim() : "";
+            const id = recognizeKey(key);
+            if (!id || key.length > 1024 || /\s/.test(key)) return { error: issue.invalidKey };
+            const provider = providers[id];
+            if (!await chrome.permissions.contains({ origins: [hostPermission(provider.origin)] })) {
+              return { error: issue.permission };
+            }
+            await askProvider(id, key, provider.model)("Reply with the digit 1.");
+            return setEngine({ kind: "key", provider: id, key, model: provider.model });
+          }
+          case "bridge": {
+            const url = parseBridge(value);
+            if (!url) return { error: "Enter the bridge address, including http:// or https://." };
+            if (!await chrome.permissions.contains({ origins: [hostPermission(url)] })) return { error: issue.permission };
+            return setEngine({ kind: "bridge", url });
+          }
+          case "disconnect":
+            return setEngine(null);
+          case "about":
+            if (typeof value === "string" && value.length <= 4000) await chrome.storage.local.set({ about: value.trim() });
+            return {};
+          case "model":
+            if (engine && engine.kind !== "bridge" && typeof value === "string" && /^[a-zA-Z0-9_./:-]{1,150}$/.test(value)) {
+              await chrome.storage.session.remove("selectionIssue");
+              await chrome.storage.local.set({ engine: { ...engine, model: value } });
+              return {};
+            }
+            return { error: issue.model };
+          case "models":
+            return engine?.kind === "chatgpt" ? { models: await chatGPTModels() } : {};
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        return { error: Object.values(issue).find((text) => text === message) ?? issue.failed };
+      }
+      return { error: issue.failed };
+    }),
+    callback: (tabId: number, query: string) => run(async () => {
+      let error: string | undefined;
+      try {
+        await finishChatGPT(tabId, query);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "";
+        error = Object.values(issue).find((text) => text === message) ?? issue.auth;
+      }
+      if (error) await chrome.storage.session.set({ selectionIssue: error });
+      else await chrome.storage.session.remove("selectionIssue");
+      return {};
+    }),
+  };
+}

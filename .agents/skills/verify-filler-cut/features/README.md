@@ -1,4 +1,4 @@
-# Filler Cut verification map
+# Unpad verification map
 
 Read the [verification skill](../SKILL.md) before starting a run. Use the [check table](../../../../tests/live/README.md) to choose the mode. Keep the command, mode, measurements, and evidence path together when reporting a result.
 

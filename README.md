@@ -1,18 +1,63 @@
-# filler-cut
+# Unpad
 
-A Chrome extension that removes filler and marks key sentences in the author's own words. Click an inline ··· to expand a removed stretch. Click the muted text to hide it again. Hold Shift to see the original.
+Removes the filler from articles and long posts, in the author's own words.
 
-Private. Built clean-room: no code from Osso (GPL-3.0) or any other GPL project.
+![An article before and after Unpad](docs/before-after.png)
+
+## Install
+
+1. Download and unzip the extension from the [releases page](https://github.com/SamuelZ12/filler-cut/releases). For a source build, follow [Development](#development).
+2. Open `chrome://extensions` and turn on **Developer mode**.
+3. Select **Load unpacked** and choose the unzipped folder. The setup page opens.
+
+## Connect
+
+- Select **Continue with ChatGPT** to use an eligible ChatGPT Plus or Pro plan. Grant plan access in the sign-in tab. Use **Manage usage** to review your plan or app limit.
+- Select **Use an API key instead** and paste a key from Anthropic, OpenAI, Google Gemini, or OpenRouter. Google offers a free Gemini tier in eligible regions. [Get a Gemini API key](https://aistudio.google.com/apikey)
+
+Open the sample article after you connect. In **About you**, you can tell Unpad what you already know or what you’re working on.
+
+## Use
+
+- Press **Option+Shift+F** on Mac or **Alt+Shift+F** on other platforms to turn cuts on or off. To see or set your shortcut, open `chrome://extensions/shortcuts`. You can also use the switch in the extension popup.
+- Select **···** to expand the original sentences. Select the expanded text to hide it again. Hold **Shift** to see the full text until you release it.
+- Yellow highlights mark key points. The toolbar badge counts hidden sentences.
+- Cuts run automatically on X after you connect. On another site, use the shortcut once, or check **Always run on** in the popup to enable future articles on that site.
+
+## Privacy
+
+Page text and your optional **About you** notes go directly from the browser to the provider you choose. There is no Unpad server or activity logging with ChatGPT or an API key. Provider data policies apply, including Google’s use of free-tier prompts to improve its products. The optional bridge runs separately and keeps local logs. [Privacy policy](PRIVACY.md) · [Gemini data terms](https://ai.google.dev/gemini-api/terms)
+
+## How it works
+
+Unpad splits the article into sentences and asks your provider which ones to keep and highlight. It replaces each group of hidden sentences with a marker and keeps the original text available in the page. It caches the selection on your device.
+
+## Advanced
+
+To run the bridge on your own machine, install [Bun](https://bun.sh/) and [Pi](https://pi.dev/), and sign in to Pi with access to its configured model. From the repository folder run:
+
+```sh
+bun install
+bun run bridge
+```
+
+In extension settings, open **Advanced** and enter `http://127.0.0.1:18931` under **Bridge URL**. The bridge keeps its cache and logs under `~/.pi/agent/filler-cut/data` by default. Set `FILLER_CUT_DATA` to choose a different directory or `FILLER_CUT_RULES` to supply a reader notes file.
+
+On macOS, run `scripts/bridge-service.sh install` to start the bridge at login. To reach it from another device over Tailscale, add `--tailnet` to the install command.
+
+For a build with a preset connection, set `BRIDGE_URL` to its origin when you run the build.
 
 ## Development
 
-Run `bun install`, then `bun run check` for type checking and unit tests.
-Run `bun run build` to generate the unpacked MV3 extension in `dist/extension`.
-Set `BRIDGE_URL` at build time to override `http://127.0.0.1:18931`.
+```sh
+bun install
+bun run build
+bun run check
+bun run zip
+```
 
-Run `bun run bridge` to start the bridge on `127.0.0.1`. Use `PORT` to
-override port `18931`, `FILLER_CUT_DATA` to override
-`~/.pi/agent/filler-cut/data`, and `FILLER_CUT_RULES` to override the
-reader-rules file at `~/.pi/agent/filler-cut/engine/reader-rules.txt`.
-The bridge reads the rules at startup and writes `requests.jsonl`,
-`events.jsonl`, and the selection cache under the data directory.
+Load `dist/extension` in Chrome. The zip command creates a clean store archive in `dist/`. See [live verification](tests/live/README.md) for the browser checks.
+
+## License
+
+Unpad is free and open source under the [GNU Affero General Public License v3.0](LICENSE).

@@ -1,9 +1,9 @@
 ---
 name: verify-filler-cut
-description: Verify the Filler Cut Chrome extension with its Playwright checks. Use after changes to selection, cuts, reading controls, navigation, the toolbar badge, or the bridge, and to record the Wang demo.
+description: Verify the Unpad Chrome extension with its Playwright checks. Use after changes to selection, cuts, reading controls, navigation, the toolbar badge, or the bridge, and to record the Wang demo.
 ---
 
-# Verify Filler Cut
+# Verify Unpad
 
 Read the [live specification](../../../tests/live/README.md) for check IDs and pass conditions. Choose a user path from the [feature map](features/README.md).
 
