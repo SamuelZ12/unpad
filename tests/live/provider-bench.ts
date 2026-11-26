@@ -27,7 +27,7 @@ const fixtures = await Promise.all(["wang", "warp", "perfloop"].map(async (name)
 
 for (const id of Object.keys(candidates) as (keyof typeof candidates)[]) {
   if (!requested.includes(id)) continue;
-  const credential = await (id === "chatgpt" ? chatGPTToken() : apiKey(id));
+  const credential = id === "chatgpt" ? chatGPTToken() : apiKey(id);
   if (!credential) {
     console.log(`SKIP ${id}: credential unavailable`);
     continue;

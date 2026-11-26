@@ -55,9 +55,9 @@ On the tested Chromium build, S21 fails because the 0.2.0 install's ⌥⇧F assi
 
 Run `bun run verify:setup fresh oauth` without credentials. Use `anthropic`, `gemini`, or `chatgpt` as arguments for a real connection run. Each uses a fresh profile and builds without a bridge. The OAuth test uses a local server and verifies that Chrome intercepts the callback before sending a loopback request.
 
-The real API key checks use local Keychain entries `anthropic-api-key-pi` and `gemini-api-key-free`. The ChatGPT inference check reads a token from the local `proto-siwc/token.ts` helper and injects it through a development-only hook. The production zip excludes that hook and the local OAuth endpoint override. These real checks may use your plan or provider credits.
+The real API key checks read `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` from the environment. The ChatGPT inference check reads a ChatGPT plan access token from `CHATGPT_ACCESS_TOKEN` and injects it through a development-only hook. The production zip excludes that hook and the local OAuth endpoint override. These real checks may use your plan or provider credits.
 
-Run `bun run bench:providers anthropic gemini openai openrouter` to time the Wang, Warp, and Perfloop fixtures. OpenAI and OpenRouter require `OPENAI_API_KEY` and `OPENROUTER_API_KEY` in the environment. Results include a count of passing runs, the median, and the range.
+Run `bun run bench:providers anthropic gemini openai openrouter` to time the Wang, Warp, and Perfloop fixtures. Each provider reads its key from the environment: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, or `OPENROUTER_API_KEY`. Results include a count of passing runs, the median, and the range.
 
 X is built in. The harness grants `claude.com` as a user site before the Warp checks.
 

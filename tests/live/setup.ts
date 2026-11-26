@@ -220,7 +220,7 @@ for (const id of args) {
         }
       } finally { await fake.stop(); }
     } else if (id === "anthropic" || id === "gemini" || id === "chatgpt") {
-      const credential = await (id === "chatgpt" ? chatGPTToken() : apiKey(id));
+      const credential = id === "chatgpt" ? chatGPTToken() : apiKey(id);
       if (!credential) throw new Error("Credential unavailable");
       await build(directory);
       await withActionBrowser(async (tabs, action) => {
