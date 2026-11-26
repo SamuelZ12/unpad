@@ -64,14 +64,26 @@ test("signed-in X finds each post body on timeline and status routes", async () 
         const button = document.querySelector<HTMLButtonElement>("#long button")!;
         button.click();
         button.hidden = true;
-        preview.after(button);
+        const wrapper = document.createElement("div");
+        wrapper.append(button);
+        preview.after(wrapper);
         const quote = document.querySelector<HTMLTemplateElement>("#quoted")!;
         const main = document.querySelector("main")!;
         main.append(quote.content.cloneNode(true));
         document.body.append(preview.cloneNode(true));
         const copy = preview.cloneNode(true) as HTMLElement;
         copy.hidden = true;
-        main.append(copy);
+        main.querySelector("#long article")!.append(copy);
+        const draft = preview.cloneNode(true) as HTMLElement;
+        const hidden = document.createElement("span");
+        hidden.contentEditable = "true";
+        hidden.textContent = "This draft sentence is private.";
+        preview.append(hidden);
+        main.append(draft);
+        const article = document.createElement("div");
+        article.dataset.testid = "twitterArticleRichTextView";
+        article.innerHTML = `<div data-block="true">${draft.textContent}</div>`;
+        main.append(article);
         const after = await extract(document, url);
 
         const otherPost = document.querySelector("#long article")!.cloneNode(true) as Element;

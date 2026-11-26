@@ -153,6 +153,12 @@ function start() {
       const picks = parseSelectResponse(answer);
       if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
       if (!isCurrent()) return;
+      if (doc.surface === "x-post") {
+        // X can update a mounted cell while picks are in flight.
+        await scan();
+        await finishScan();
+        if (!isCurrent()) return;
+      }
       const { bridge } = answer as { bridge?: string };
       if (typeof bridge === "string") bridgeForDoc.set(doc.key, bridge);
       dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });

@@ -35,9 +35,10 @@ export function observePage(scan: () => void, navigate: () => void, onMutations:
     changed(records);
     urlChanged();
   });
+  const xAttributes = location.hostname === "x.com" ? ["href", "aria-current"] : [];
   observer.observe(document.documentElement, {
     subtree: true, childList: true, characterData: true,
-    attributes: true, attributeFilter: ["hidden", "aria-hidden", "class", "contenteditable"],
+    attributes: true, attributeFilter: ["hidden", "aria-hidden", "class", "contenteditable", ...xAttributes],
   });
 
   const navigation = (window as Window & { navigation?: EventTarget }).navigation;

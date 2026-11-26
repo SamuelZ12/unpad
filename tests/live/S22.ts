@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { cacheKeyFor, writeCache } from "../../bridge/cache";
-import { loadConfig } from "../../bridge/config";
-import { segment } from "../../src/core/segment";
+import { collapse, segment } from "../../src/core/segment";
 import type { SentenceId } from "../../src/shared/types";
 import type { CheckContext } from "./run";
 import { extensionWorker } from "./lib/action";
@@ -20,6 +19,7 @@ export default async function S22(context: CheckContext) {
   const { bridge, evidence } = context;
   return withBridge(context, () => withBrowser(context, async (browser, page) => {
     const checkConsole = captureDomErrors(page);
+    page.setDefaultTimeout(5000);
     try {
       const worker = await extensionWorker(browser.context);
       const selects = await watchSelections(worker);
@@ -44,7 +44,7 @@ export default async function S22(context: CheckContext) {
       const [expanded, quoted] = await page.locator("template").evaluateAll((templates) =>
         (templates as HTMLTemplateElement[]).map(({ content }) => content.querySelector("[role=link] [data-testid=tweetText]")?.textContent ?? content.textContent!));
 
-      const { versions } = await loadConfig();
+      const { versions } = bridge;
       async function seed(text: string, count: number, removed: number[]) {
         const sentences = segment(text).map((span) => span.text);
         assert.equal(sentences.length, count);
@@ -72,10 +72,10 @@ export default async function S22(context: CheckContext) {
       await requests(1);
 
       const { remaining } = await expandRun(post, postPicks);
-      assert.equal(browser.context.pages().length, 1);
+      assert.deepEqual(await page.evaluate("postOpens"), []);
       await post.locator(restored).first().click();
       await assertCuts(post, postPicks);
-      assert.equal(browser.context.pages().length, 1);
+      assert.deepEqual(await page.evaluate("postOpens"), []);
       await expandRun(post, postPicks);
       await badge("1");
       await long.evaluate((node) => node.remove());
@@ -85,7 +85,12 @@ export default async function S22(context: CheckContext) {
       await waitForState(page, "faded", 3000);
       await assertCuts(post, postPicks, remaining);
       await badge("1");
+      await post.locator(restored).first().click();
+      await assertCuts(post, postPicks);
+      await badge("3");
+      await expandRun(post, postPicks);
       await requests(1);
+      const cutText = collapse(await post.innerText());
 
       // X can replace or set its original Text child while our sibling spans are present.
       const source = await post.evaluateHandle((node) => node.querySelector("a + span")!.firstChild as Text);
@@ -99,9 +104,11 @@ export default async function S22(context: CheckContext) {
       }, originalText);
       await page.waitForFunction((node) => node.data === "", replacement);
       await assertCuts(post, postPicks, remaining);
+      assert.equal(collapse(await post.innerText()), cutText);
       await replacement.evaluate((node, text) => { node.data = text + " "; }, originalText);
       await page.waitForFunction((node) => node.data === "", replacement);
       await assertCuts(post, postPicks, remaining);
+      assert.equal(collapse(await post.innerText()), cutText);
       await requests(1);
 
       await toggle(page);
@@ -135,7 +142,7 @@ export default async function S22(context: CheckContext) {
       await assertCuts(quote, quotePicks);
       await assertCuts(post, postPicks, remaining);
       await badge("4");
-      assert.equal(browser.context.pages().length, 1);
+      assert.deepEqual(await page.evaluate("postOpens"), []);
 
       for (const colorScheme of ["light", "dark"] as const) {
         await page.emulateMedia({ colorScheme });
@@ -154,11 +161,13 @@ export default async function S22(context: CheckContext) {
         post.getByText("Thanksgiving morning project", { exact: false }).click(),
       ]);
       await opened.waitForURL(statusUrl);
+      assert.deepEqual(await page.evaluate("postOpens"), [statusUrl]);
       await opened.close();
       await requests(2);
 
       const link = post.locator('a[href^="https://"]');
-      const href = await link.evaluate((anchor: HTMLAnchorElement) => anchor.href);
+      const href = await page.locator("#expanded").evaluate((template: HTMLTemplateElement) =>
+        new URL(template.content.querySelector("a")!.getAttribute("href")!, location.href).href);
       await page.route(href, (route) => route.fulfill({ contentType: "text/html", body: "Methodology" }));
       await Promise.all([page.waitForURL(href), link.click()]);
       return "0 selects for the preview and short post, 1 on expansion, 0 on cell rebuild or same-content updates, 1 for the quoted body; cuts, expanded text, badge, exact restoration, and post actions verified";

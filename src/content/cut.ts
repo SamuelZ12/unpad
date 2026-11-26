@@ -294,7 +294,10 @@ export function createCut(activate: Activate) {
 
   return {
     focusedRun: () => controlRun(document.activeElement),
-    control: (sentence: SentenceAnchor, event: RunEvent) => starts.get(sentence.block)?.get(event.ids[0]),
+    control(sentence: SentenceAnchor, event: RunEvent) {
+      const control = starts.get(sentence.block)?.get(event.ids[0]);
+      return controlRun(control ?? null)?.event.docKey === event.docKey ? control : undefined;
+    },
     read(node: Text) {
       const source = projected.get(node);
       return source && !source.edited && node.data === "" ? source.original : node.data;

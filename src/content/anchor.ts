@@ -1,6 +1,6 @@
 import { segment } from "../core/segment";
 import { MAX_SENTENCES, MIN_SENTENCES } from "../shared/config";
-import { docKey } from "../shared/keys";
+import { docKey, randomId } from "../shared/keys";
 import type { Doc } from "../shared/types";
 import { surfaces, textWalker, type ReadText } from "./surfaces";
 
@@ -33,8 +33,8 @@ export function rangeOf({ slices }: SentenceAnchor, locate: LocateText = (slice)
   return range;
 }
 
-function readBlock(block: Element, generic: boolean, read: ReadText) {
-  const walker = textWalker(block, generic);
+function readBlock(block: Element, generic: boolean, read: ReadText, excludePrivate: boolean) {
+  const walker = textWalker(block, generic, excludePrivate);
   const nodes: { node: Text; offset: number; length: number }[] = [];
   let text = "";
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -78,22 +78,23 @@ export function createExtractor() {
     document: Document, url: URL, checkArticle = false, read: ReadText = (node) => node.data,
   ): Promise<AnchoredDoc[]> {
     const docs = surfaces(document, url, checkArticle, read).map(({ root, surface, title, blocks, generic, identity }) => {
+      const previous = posts.get(root);
+      const keyPrefix = identity === null ? previous?.identity ?? randomId() : identity;
       async function build(spans: ReturnType<typeof anchor>): Promise<AnchoredDoc | undefined> {
         if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
         const sentences = spans.map(({ text }) => text);
-        const key = await docKey(identity ?? title, sentences);
+        const key = await docKey(keyPrefix ?? title, sentences);
         return { root, doc: { key, surface, title, sentences }, sentences: spans.map(({ sentence }) => sentence) };
       }
 
-      if (surface !== "x-post") return build(blocks.flatMap((block) => anchor(block, readBlock(block, !!generic, read))));
-      const source = readBlock(root, false, read);
-      const previous = posts.get(root);
-      if (previous && identity === previous.identity && source.text === previous.source.text && source.nodes.length === previous.source.nodes.length &&
+      if (surface !== "x-post") return build(blocks.flatMap((block) => anchor(block, readBlock(block, !!generic, read, !!generic || surface === "x-article"))));
+      const source = readBlock(root, false, read, true);
+      if (previous && keyPrefix === previous.identity && source.text === previous.source.text && source.nodes.length === previous.source.nodes.length &&
         source.nodes.every(({ node, length }, i) => node === previous.source.nodes[i].node && length === previous.source.nodes[i].length)) {
         return previous.result;
       }
       const result = build(anchor(root, source));
-      posts.set(root, { identity, source, result });
+      posts.set(root, { identity: keyPrefix, source, result });
       void result.catch(() => { if (posts.get(root)?.result === result) posts.delete(root); });
       return result;
     });

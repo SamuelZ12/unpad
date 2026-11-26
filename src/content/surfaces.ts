@@ -12,7 +12,7 @@ interface SurfaceDoc {
   readonly title: string;
   readonly blocks: readonly Element[];
   readonly generic?: boolean;
-  readonly identity?: string;
+  readonly identity?: string | null;
 }
 
 const nonProse = "nav, header, footer, aside, form, figure, figcaption, pre, table, h1, h2, h3, h4, h5, h6, [hidden], [aria-hidden=true]";
@@ -23,6 +23,7 @@ const prose = "p, li, blockquote";
 // Hand-written pages put the text straight into a layout table cell or <font> and break paragraphs with <br>.
 const bareNonProse = `nav, header, footer, aside, form, pre, script, style, noscript, textarea, template, ${privateText}`;
 export const xPostBody = "[data-testid=tweetText]";
+const xTweet = "article[data-testid=tweet]";
 const xShowMore = "[data-testid=tweet-text-show-more-link]";
 const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
@@ -30,19 +31,26 @@ const xPublicArticle = "[data-article-body-html]";
 function xSurfaces(document: Document, path: string): SurfaceDoc[] {
   const docs: SurfaceDoc[] = [];
   for (const article of document.querySelectorAll(`main ${xAppArticle}`)) {
-    const title = collapse(article.closest("article")?.querySelector("[data-testid=twitter-article-title]")?.textContent ?? "");
+    const tweet = article.closest(xTweet);
+    if (!tweet || article.closest(privateText)) continue;
+    const heading = tweet.querySelector("[data-testid=twitter-article-title]");
+    const title = heading && !heading.closest(privateText) ? genericText(heading, (node) => node.data) : "";
     const blocks = [...article.querySelectorAll("[data-block=true]")]
-      .filter((block) => !block.closest(nonProse) && !block.querySelector(prose));
+      .filter((block) => !block.closest(genericNonProse) && !block.querySelector(prose));
     docs.push({ root: article, title, blocks, surface: "x-article" });
   }
   for (const post of document.querySelectorAll(`main ${xPostBody}`)) {
-    if (post.closest(privateText)) continue;
-    const more = post.nextElementSibling?.matches(xShowMore) ? post.nextElementSibling : post.querySelector(xShowMore);
+    const tweet = post.closest(xTweet);
+    if (!tweet || post.closest(privateText)) continue;
+    const next = post.nextElementSibling;
+    const neighbor = next?.matches(xPostBody) || next?.querySelector(xPostBody) ? null : next;
+    const more = post.querySelector(xShowMore) ??
+      (neighbor?.matches(xShowMore) ? neighbor : neighbor?.querySelector(xShowMore));
     if (more && !more.closest(privateText)) continue;
-    const tweet = post.closest("article[data-testid=tweet]");
-    const permalink = tweet?.querySelector<HTMLAnchorElement>('a[href*="/status/"]:has(time), a[aria-current=page][href*="/status/"]');
-    const position = tweet ? Array.from(tweet.querySelectorAll(xPostBody)).indexOf(post) : 0;
-    const identity = permalink ? `${permalink.pathname}:${position}` : undefined;
+    const permalink = tweet.querySelector<HTMLAnchorElement>('a[href*="/status/"]:has(time), a[aria-current=page][href*="/status/"]');
+    const id = permalink?.pathname.match(/\/status\/(\d+)/)?.[1];
+    const card = post.parentElement?.closest("[role=link]");
+    const identity = id ? `${id}:${card && card !== tweet && tweet.contains(card) ? "quote" : "post"}` : null;
     docs.push({ root: post, title: "", blocks: [post], surface: "x-post", identity });
   }
 
@@ -62,7 +70,7 @@ function xSurfaces(document: Document, path: string): SurfaceDoc[] {
     return docs;
   }
   const post = tweet.querySelector("div[dir=auto][lang]");
-  if (post && !docs.some(({ root }) => root === post)) docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
+  if (post && !post.matches(xPostBody)) docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
   return docs;
 }
 
@@ -78,11 +86,11 @@ function blog(document: Document, path: string): SurfaceDoc[] {
   return [{ root: body, title, blocks, surface: "blog" }];
 }
 
-export function textWalker(root: Element, generic: boolean) {
+export function textWalker(root: Element, generic: boolean, excludePrivate = generic) {
   return root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, (node) => {
     if (node instanceof Text) return NodeFilter.FILTER_ACCEPT;
     if (!(node instanceof Element)) return NodeFilter.FILTER_SKIP;
-    if (node.matches(projectionSelector) || (generic && node.matches(privateText))) return NodeFilter.FILTER_REJECT;
+    if (node.matches(projectionSelector) || (excludePrivate && node.matches(privateText))) return NodeFilter.FILTER_REJECT;
     return generic && node.localName === "br" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
   });
 }

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import type { Locator, Page } from "playwright";
 import { collapse } from "../../../src/core/segment";
 import { cacheKeyFor } from "../../../bridge/cache";
-import { loadConfig } from "../../../bridge/config";
 import { MIN_MARK_SENTENCES } from "../../../src/shared/config";
 import type { Doc } from "../../../src/shared/types";
 import type { SelectRequest, SelectResponse } from "../../../src/shared/wire";
@@ -66,23 +65,20 @@ export function snapshot(root: Locator) {
 export async function referenceCut(context: CheckContext, browser: Browser, page: Page, name: Reference) {
   const index = (await context.bridge.requests()).length;
   const root = await browser.open(page, name);
-  let expected: string | undefined;
-  if (name === "wang") {
-    const article = await poll(async () => {
-      const raw = await page.locator("html").getAttribute("data-filler-cut-debug");
-      if (!raw) return;
-      const { docs } = JSON.parse(raw) as { docs: Doc[] };
-      return docs.find(({ surface }) => surface === "x-article");
-    }, Boolean, 5000);
-    assert.ok(article, "Wang was missing from the extracted documents");
-    const config = await loadConfig();
-    const { title, sentences } = article;
-    expected = await cacheKeyFor({ title, sentences },
-      sentences.length >= MIN_MARK_SENTENCES ? config.keyVersions : config.versions);
-  }
-  const row = await poll(async () => (await context.bridge.requests()).slice(index).find(
-    ({ cacheKey }) => expected === undefined || cacheKey === expected), Boolean, 45_000);
-  assert.ok(row, "Expected selection request did not arrive");
+  const surface = { wang: "x-article", warp: "blog", perfloop: "x-post" }[name];
+  const article = await poll(async () => {
+    const raw = await page.locator("html").getAttribute("data-filler-cut-debug");
+    if (!raw) return;
+    const { docs } = JSON.parse(raw) as { docs: Doc[] };
+    return docs.find((doc) => doc.surface === surface);
+  }, Boolean, 5000).catch((error) => { throw new Error(`No extracted document for ${name}`, { cause: error }); });
+  const { title, sentences } = article!;
+  const { keyVersions, versions } = context.bridge;
+  const expected = await cacheKeyFor({ title, sentences }, sentences.length >= MIN_MARK_SENTENCES ? keyVersions : versions);
+  const row = (await poll(async () => (await context.bridge.requests()).slice(index).find(
+    ({ cacheKey }) => cacheKey === expected), Boolean, 45_000).catch((error) => {
+    throw new Error(`No selection request for ${name} (${expected})`, { cause: error });
+  }))!;
   const entry = await cacheEntry(context, row.cacheKey);
   const ids = pickedCuts(entry);
   assert.ok(ids.length, `${name} has no cuts (${row.result})`);

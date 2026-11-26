@@ -68,7 +68,7 @@ export async function launch(
         if (route.request().resourceType() !== "document") return route.abort();
         const url = route.request().url();
         const name = url === urls.wang ? "wang" : "perfloop";
-        const body = new URL(url).pathname === "/home" ? "<!doctype html><main><h1>Home</h1></main>" : await fixture(name);
+        const body = new URL(url).pathname === new URL(xHomeUrl).pathname ? "<!doctype html><main><h1>Home</h1></main>" : await fixture(name);
         await route.fulfill({ contentType: "text/html", body });
       });
     }

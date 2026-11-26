@@ -64,8 +64,11 @@ meet </span><span dir="ltr"><span>https://</span>grow.af</span><span>
   const postBody = longCell.querySelector("[data-testid=tweetText]");
   const postUrl = longCell.querySelector("header a").href;
   const expanded = document.querySelector("#expanded");
+  const postOpens = [];
   function openPost(event, url) {
-    if (!event.target.closest("a, button")) window.open(url);
+    if (event.target.closest("a, button")) return;
+    postOpens.push(new URL(url, location.href).href);
+    window.open(url);
   }
   function wireLong(cell) {
     cell.querySelector("article").addEventListener("click", (event) => openPost(event, postUrl));

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright";
 import { collapse } from "../../src/core/segment";
 import { roots, urls } from "./lib/browser";
-import { atMost, withBrowser } from "./lib/check";
+import { atMost, waitForState, withBrowser } from "./lib/check";
 import { assertCuts, captureDomErrors, referenceCut, withBridge } from "./lib/cut";
 import { poll, save, screenshot } from "./lib/pixels";
 import { replayNavigation } from "./lib/replay";
@@ -47,7 +47,7 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
   if (before === second) {
     for (const marker of staleMarkers) assert.equal(await marker.evaluate((node) => node.isConnected), false);
   }
-  if (context.mode !== "logged-in") assert.equal(await page.locator("[data-filler-cut-marker]").count(), 0);
+  if (context.mode === "replay") assert.equal(await page.locator("[data-filler-cut-marker]").count(), 0);
   await save(context.evidence + "/second-status", (await screenshot(page)).png);
 
   const cursor = (await context.bridge.requests()).length;
@@ -58,6 +58,7 @@ export async function followStatus(context: CheckContext, page: Page, wang: Awai
   const appeared = Date.now();
   await wang.root.locator("[data-filler-cut-marker]").first().waitFor({ timeout: 5000 });
   const elapsed = Date.now() - appeared;
+  await waitForState(page, "faded", 1000);
   const row = await poll(async () => (await context.bridge.requests()).slice(cursor).find(
     ({ cacheKey }) => cacheKey === wang.row.cacheKey), Boolean, 5000);
   assert.equal(row?.source, "cache");

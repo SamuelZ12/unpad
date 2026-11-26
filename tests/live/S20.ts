@@ -12,6 +12,11 @@ import { poll } from "./lib/pixels";
 const unenabled = "https://example.com/";
 const toast = (page: Page) => page.locator("filler-cut-toast").getByRole("status");
 
+async function assertPlainToast(page: Page) {
+  await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
+  assert.equal(await toast(page).innerText(), "Nothing to cut here");
+}
+
 async function captures(popup: Page, file: string, expected: string | RegExp, restricted = false) {
   await popup.waitForFunction(({ expected, regex }) => {
     const text = document.querySelector("#status")?.textContent ?? "";
@@ -51,8 +56,7 @@ export default async function S20(context: CheckContext) {
       await page.locator("html[data-filler-cut-debug]").waitFor({ state: "attached" });
       assert.equal(await toast(page).count(), 0);
       await toggle(page);
-      await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
-      assert.equal(await toast(page).innerText(), "Nothing to cut here");
+      await assertPlainToast(page);
       await page.screenshot({ path: context.evidence + "/x-home-toast.png" });
       assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
       await page.route("https://x.com/example/status/1", (route) => route.fulfill({
@@ -64,8 +68,7 @@ export default async function S20(context: CheckContext) {
       await page.locator("html[data-filler-cut-debug]").waitFor({ state: "attached" });
       assert.equal(await toast(page).count(), 0);
       await toggle(page);
-      await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
-      assert.equal(await toast(page).innerText(), "Nothing to cut here");
+      await assertPlainToast(page);
       assert.equal(await toast(page).evaluate((box) => getComputedStyle(box).position), "fixed");
       assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), { lensOn: true });
       assert.equal(await selections(), 0);
@@ -86,8 +89,7 @@ export default async function S20(context: CheckContext) {
         assert.equal(await builtIn.isChecked(), true);
         assert.equal(await builtIn.isDisabled(), true);
         await popup.getByRole("switch").click();
-        await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
-        assert.equal(await toast(page).innerText(), "Nothing to cut here");
+        await assertPlainToast(page);
       });
       assert.deepEqual(await worker.evaluate(() => chrome.storage.local.get("lensOn")), {});
 
@@ -97,8 +99,7 @@ export default async function S20(context: CheckContext) {
         await captures(popup, context.evidence + "/unenabled", /Off on this site\. Use the switch or .+ to cut this page once\./);
         const toggle = popup.getByRole("switch");
         await toggle.click();
-        await toast(page).getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
-        assert.equal(await toast(page).innerText(), "Nothing to cut here");
+        await assertPlainToast(page);
         await popup.getByText("Nothing to cut here", { exact: true }).waitFor({ timeout: 3000 });
         assert.equal(await toggle.getAttribute("aria-checked"), "false");
         const snapshot = await popup.evaluate(async () => {
