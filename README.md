@@ -6,7 +6,7 @@ Removes the filler from articles and long posts, in the author's own words.
 
 ## Install
 
-1. Download and unzip the extension from the [releases page](https://github.com/SamuelZ12/filler-cut/releases). For a source build, follow [Development](#development).
+1. Download and unzip the extension from the [releases page](https://github.com/SamuelZ12/unpad/releases/latest). For a source build, follow [Development](#development).
 2. Open `chrome://extensions` and turn on **Developer mode**.
 3. Select **Load unpacked** and choose the unzipped folder. The setup page opens.
 
