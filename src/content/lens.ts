@@ -4,6 +4,7 @@ import type { Doc, DocKey, SentenceId } from "../shared/types";
 import { parseErrorResponse, parseSelectResponse, type SelectRequest } from "../shared/wire";
 import { documentRoute, type PageSnapshot } from "../shared/page-snapshot";
 import { statusFeedback } from "../shared/status-copy";
+import { issue } from "../shared/connection";
 import { MIN_MARK_SENTENCES } from "../shared/config";
 import { extract, type AnchoredDoc } from "./anchor";
 import { createLog } from "./log";
@@ -26,6 +27,7 @@ function start() {
   let scanVersion = 0;
   let mode: Mode | undefined;
   const shown = new Set<Doc["key"]>();
+  const bridgeForDoc = new Map<DocKey, string>();
 
   let state: PageState = { lensOn: false, holding: false, docs: new Map() };
   let anchoredDocs: AnchoredDoc[] = [];
@@ -53,7 +55,8 @@ function start() {
   }
 
   function snapshot(): PageSnapshot {
-    return { mode, lensOn: state.lensOn, status: mode ? currentStatus() : lastAttempt };
+    const status = mode === "site" && !connected ? undefined : mode ? currentStatus() : lastAttempt;
+    return { mode, lensOn: state.lensOn, status };
   }
 
   type RunAction = Parameters<typeof projection.reconcile>[2];
@@ -75,9 +78,10 @@ function start() {
       fadedTotal += faded;
       markedTotal += marks;
       const picks = state.docs.get(doc.key)?.picks;
-      if ((!faded && !marks) || picks?.kind !== "ready" || shown.has(doc.key)) continue;
+      const bridge = bridgeForDoc.get(doc.key);
+      if (!bridge || (!faded && !marks) || picks?.kind !== "ready" || shown.has(doc.key)) continue;
       shown.add(doc.key);
-      void log({
+      void log(bridge, {
         type: "shown", cacheKey: picks.cacheKey,
         total: doc.sentences.length, faded, marks,
       }).catch(console.warn);
@@ -117,9 +121,10 @@ function start() {
 
   function logClicks(type: "restore" | "recut", docKey: DocKey, ids: readonly SentenceId[]) {
     const entry = state.docs.get(docKey);
-    if (entry?.picks.kind !== "ready") return;
+    const bridge = bridgeForDoc.get(docKey);
+    if (!bridge || entry?.picks.kind !== "ready") return;
     const { cacheKey } = entry.picks;
-    void log(...ids.map((id) => ({
+    void log(bridge, ...ids.map((id) => ({
       type, cacheKey, sentenceId: id, text: entry.doc.sentences[id - 1],
     }))).catch(console.warn);
   }
@@ -142,15 +147,17 @@ function start() {
       const answer: unknown = await chrome.runtime.sendMessage({ type: "select", doc: request });
       const picks = parseSelectResponse(answer);
       if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
-      if (isCurrent()) dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
+      if (!isCurrent()) return;
+      const { bridge } = answer as { bridge?: string };
+      if (typeof bridge === "string") bridgeForDoc.set(doc.key, bridge);
+      dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
     } catch (error) {
-      console.warn("Filler Cut selection failed", error);
       if (isCurrent()) dispatch({ type: "picks-failed", docKey: doc.key, reason: error instanceof Error ? error.message : "Selection failed" });
     }
   }
 
   function scan() {
-    if (orphaned() || !mode || (mode === "page" && !state.lensOn)) return;
+    if (orphaned() || (mode === "site" && !connected) || !mode || (mode === "page" && !state.lensOn)) return;
     const version = ++scanVersion;
     // An earlier scan must never replace the status of a newer document or mutation.
     const current = () => version === scanVersion && href === location.href;
@@ -206,6 +213,7 @@ function start() {
     cancelFeedback();
     toast();
     shown.clear();
+    bridgeForDoc.clear();
     log = createLog(href);
     dispatch({ type: "navigated" });
   }
@@ -229,14 +237,37 @@ function start() {
     void scan();
   }
 
+  let connected = false;
   let lensChanges = 0;
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (mode !== "site" || area !== "local" || !changes.lensOn) return;
+  function applyPreferences(preferences: { connected?: boolean; lensOn?: boolean; restart?: boolean }) {
     lensChanges++;
-    dispatch({ type: "lens-set", on: changes.lensOn.newValue !== false });
-  });
+    const first = !connected && preferences.connected;
+    connected = preferences.connected === true;
+    if (preferences.restart && (mode === "page" || (!mode && lastAttempt))) stop();
+    if (mode === "site") {
+      if (preferences.restart) reset();
+      dispatch({ type: "lens-set", on: connected && preferences.lensOn !== false });
+      if (connected && (first || preferences.restart)) void scan();
+    }
+  }
 
-  chrome.runtime.onMessage.addListener((message, _sender, reply) => {
+  async function readSitePreferences(restart = false) {
+    const changes = lensChanges;
+    try {
+      const preferences = await chrome.runtime.sendMessage({ type: "reading-preferences" });
+      if (mode === "site" && changes === lensChanges) applyPreferences({ ...preferences, restart });
+    } catch {
+      if (mode === "site" && changes === lensChanges) render();
+    }
+  }
+
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (sender.id !== chrome.runtime.id) return;
+    if (message?.type === "reading-preferences") applyPreferences(message);
+    if (message?.type === "needs-setup") {
+      if (!hasFocusedEditor() && documentRoute(location.href) === documentRoute(message.url)) toast({ title: issue.setup });
+      reply(true);
+    }
     if (message?.type === "page-status") {
       navigate();
       reply(snapshot());
@@ -272,16 +303,31 @@ function start() {
       if (!mode) return;
       const revealed = view(visibleState()) === "revealed";
       dispatch({ type: "hold-end" });
-      if (revealed) void log({ type: "reveal", heldMs }).catch(console.warn);
+      const bridge = anchoredDocs.map(({ doc }) => bridgeForDoc.get(doc.key)).find(Boolean);
+      if (revealed && bridge) void log(bridge, { type: "reveal", heldMs }).catch(console.warn);
     },
   );
 
 
   async function pressSite(url: string) {
     const requestedOn = pageView;
-    if (!scanning) void scan();
-    await finishScan();
     const current = () => mode === "site" && pageView === requestedOn && documentRoute(location.href) === documentRoute(url);
+    if (!connected) await readSitePreferences();
+    if (!connected) {
+      toast({ title: issue.offline });
+      return false;
+    }
+    await finishScan();
+    if (!current()) return false;
+    const docs = new Map(state.docs);
+    for (const [key, entry] of docs) {
+      if (entry.picks.kind !== "failed") continue;
+      const { reason } = entry.picks;
+      if ([issue.offline, issue.rate, issue.usage, issue.reply].some((message) => message === reason)) docs.delete(key);
+    }
+    state = { ...state, docs };
+    await scan();
+    await finishScan();
     if (!current() || hasFocusedEditor()) return false;
     let status: PageStatus | undefined = currentStatus();
     feedback(status);
@@ -316,7 +362,9 @@ function start() {
   window.addEventListener("pageshow", (event) => {
     if (event.persisted && mode === "site") {
       void chrome.runtime.sendMessage({ type: "site-enabled" }).then((enabled) => {
-        if (mode === "site" && !enabled) stop();
+        if (mode !== "site") return;
+        if (!enabled) stop();
+        else void readSitePreferences(true);
       }).catch(console.warn);
     }
   });
@@ -325,13 +373,9 @@ function start() {
     navigate();
     if (mode === "site") return;
     mode = "site";
+    connected = false;
     reset();
-    const changes = ++lensChanges;
-    void chrome.storage.local.get("lensOn").then(({ lensOn }) => {
-      if (mode !== "site") return;
-      if (changes === lensChanges) dispatch({ type: "lens-set", on: lensOn !== false });
-      return scan();
-    });
+    void readSitePreferences();
   };
 }
 

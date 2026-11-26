@@ -1,12 +1,18 @@
 #!/bin/bash
-# Runs the filler-cut bridge on the Mini as a launchd user agent and serves it to the tailnet.
-# Usage: scripts/bridge-service.sh install | uninstall | status
-# The agent lives in the user's login session, like the other agents on the Mini, so it starts at login.
+# Run the Unpad bridge on your own Mac as a launchd user agent.
+# Usage: scripts/bridge-service.sh install [--tailnet] | uninstall | status
+# The bridge starts at login. Use --tailnet to also reach it from other Tailscale devices.
 # A failed install leaves the new job loaded and exits non-zero. Run install again from a good commit.
 set -euo pipefail
 
 label=com.samuelzhang.filler-cut-bridge
 port=18931
+tailnet=false
+if [ "${2:-}" = "--tailnet" ]; then tailnet=true; fi
+case "$#:${1:-}:${2:-}" in
+  1:install:|2:install:--tailnet|1:uninstall:|1:status:) ;;
+  *) echo "usage: $0 install [--tailnet] | uninstall | status" >&2; exit 2 ;;
+esac
 repo=$(cd "$(dirname "$0")/.." && pwd)
 live="$HOME/.pi/agent/filler-cut/bridge-live"
 plist="$HOME/Library/LaunchAgents/$label.plist"
@@ -77,15 +83,44 @@ served() {
   [ "$(serve_backend)" = "http://127.0.0.1:$port" ]
 }
 
+xml() {
+  printf '%s' "$1" | sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+}
+
+has_legacy_or_tailnet_job() {
+  [ -f "$plist" ] || return 1
+  local mode
+  mode=$(plutil -extract EnvironmentVariables.FILLER_CUT_TAILNET raw -o - "$plist" 2>/dev/null || true)
+  [ "$mode" != "false" ]
+}
+
 install() {
   # The service runs a checkout of its own, so edits in the working repo never reach a restart.
-  check_serve
-  for tool in "$HOME/.bun/bin/bun" "$HOME/.pi/agent/bin/pi"; do
+  if $tailnet; then
+    check_serve
+  elif command -v tailscale >/dev/null && backend=$(serve_backend); then
+    if [ "$backend" = "http://127.0.0.1:$port" ]; then
+      echo "The bridge already has a tailnet route. Use install --tailnet to keep it, or remove it with tailscale serve --https=$port off." >&2
+      return 1
+    fi
+  elif has_legacy_or_tailnet_job; then
+    echo "Could not check your existing bridge's tailnet route. Start Tailscale and try again." >&2
+    return 1
+  fi
+  bun_path=$(command -v bun || true)
+  pi_path=$(command -v pi || true)
+  node_path=$(command -v node || true)
+  service_path="$(dirname "$pi_path")${node_path:+:${node_path%/*}}:$HOME/.pi/agent/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+  for tool in "$bun_path" "$pi_path"; do
     if [ ! -x "$tool" ]; then
-      echo "$tool is missing; the service would start and then fail" >&2
+      echo "Bun and Pi must both be on PATH" >&2
       return 1
     fi
   done
+  if ! PATH="$service_path" "$pi_path" --version >/dev/null; then
+    echo "Pi could not run with the service PATH." >&2
+    return 1
+  fi
   commit=$(git -C "$repo" rev-parse HEAD)
   if [ -e "$live" ]; then
     if ! git -C "$repo" worktree list --porcelain | grep -qx "worktree $live"; then
@@ -110,21 +145,22 @@ install() {
 	<key>Label</key><string>$label</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>$HOME/.bun/bin/bun</string>
+		<string>$(xml "$bun_path")</string>
 		<string>bridge/server.ts</string>
 	</array>
-	<key>WorkingDirectory</key><string>$live</string>
+	<key>WorkingDirectory</key><string>$(xml "$live")</string>
 	<key>EnvironmentVariables</key>
 	<dict>
-		<key>HOME</key><string>$HOME</string>
-		<key>PATH</key><string>$HOME/.pi/agent/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+		<key>HOME</key><string>$(xml "$HOME")</string>
+		<key>PATH</key><string>$(xml "$service_path")</string>
 		<key>PORT</key><string>$port</string>
+		<key>FILLER_CUT_TAILNET</key><string>$tailnet</string>
 	</dict>
 	<key>RunAtLoad</key><true/>
 	<key>KeepAlive</key><true/>
 	<key>ThrottleInterval</key><integer>5</integer>
-	<key>StandardOutPath</key><string>$log</string>
-	<key>StandardErrorPath</key><string>$log</string>
+	<key>StandardOutPath</key><string>$(xml "$log")</string>
+	<key>StandardErrorPath</key><string>$(xml "$log")</string>
 </dict>
 </plist>
 PLIST
@@ -138,24 +174,28 @@ PLIST
   launchctl bootstrap "$domain" "$plist"
   wait_healthy
 
-  if ! served; then
+  if $tailnet && ! served; then
     tailscale serve --bg --https="$port" "http://127.0.0.1:$port" >/dev/null
   fi
   status
 }
 
 uninstall() {
-  check_serve
+  if command -v tailscale >/dev/null && backend=$(serve_backend); then
+    if [ "$backend" = "http://127.0.0.1:$port" ]; then
+      tailscale serve --https="$port" off >/dev/null
+    fi
+  elif has_legacy_or_tailnet_job; then
+    echo "Could not verify removal of the existing tailnet route. Start Tailscale and try again." >&2
+    return 1
+  fi
   if loaded; then launchctl bootout "$domain/$label"; fi
   wait_unloaded
   rm -f "$plist"
-  if served; then
-    tailscale serve --https="$port" off >/dev/null
-  fi
   if [ -d "$live" ]; then
     git -C "$repo" worktree remove "$live"
   fi
-  echo "removed $label, its tailnet port and $live; the log and the data directory stay"
+  echo "removed $label and $live; the log and the data directory stay"
 }
 
 status() {
@@ -169,8 +209,9 @@ status() {
   else
     echo "local: the launchd job is not answering as the bridge on port $port"
   fi
-  backend=$(serve_backend || true)
-  if [ -n "$backend" ]; then
+  if ! command -v tailscale >/dev/null || ! backend=$(serve_backend); then
+    echo "tailnet: status unavailable"
+  elif [ -n "$backend" ]; then
     echo "tailnet: port $port proxies to $backend"
   else
     echo "tailnet: port $port is not served"
@@ -180,7 +221,4 @@ status() {
   fi
 }
 
-case "${1:-}" in
-  install|uninstall|status) "$1" ;;
-  *) echo "usage: $0 install | uninstall | status" >&2; exit 2 ;;
-esac
+"$1"

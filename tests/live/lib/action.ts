@@ -2,26 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { launch } from "./browser";
+import { extensionId, preapproveHost } from "./extension";
+export { extensionId, extensionWorker, preapproveHost } from "./extension";
 import { poll } from "./pixels";
-
-export async function extensionWorker(context: BrowserContext) {
-  return context.serviceWorkers()[0] ?? context.waitForEvent("serviceworker", { timeout: 5000 });
-}
-
-export async function extensionId(context: BrowserContext) {
-  return new URL((await extensionWorker(context)).url()).hostname;
-}
-
-async function extensionSettings(context: BrowserContext, change: (page: Page, id: string) => Promise<void>) {
-  const id = await extensionId(context);
-  const settings = await context.newPage();
-  try {
-    await settings.goto("chrome://extensions/shortcuts");
-    await change(settings, id);
-  } finally {
-    await settings.close();
-  }
-}
 
 export async function reloadExtension(context: BrowserContext) {
   const id = await extensionId(context);
@@ -37,21 +20,6 @@ export async function reloadExtension(context: BrowserContext) {
   } finally {
     await settings.close();
   }
-}
-
-// Chromium's settings pre-approve the prompt. The popup still has to request the grant.
-export async function preapproveHost(context: BrowserContext, match: string) {
-  await extensionSettings(context, (settings, id) => settings.evaluate(({ id, match }) => {
-    const { developerPrivate } = chrome as unknown as {
-      developerPrivate: { addHostPermission(id: string, match: string, done: () => void): void };
-    };
-    return new Promise<void>((resolve, reject) => {
-      developerPrivate.addHostPermission(id, match, () => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve();
-      });
-    });
-  }, { id, match }));
 }
 
 export async function addFromPopup(page: Page, action: Awaited<ReturnType<typeof connectAction>>) {
@@ -70,11 +38,11 @@ export async function addFromPopup(page: Page, action: Awaited<ReturnType<typeof
 
 export async function withActionBrowser<T>(run: (
   tabs: BrowserContext, action: Awaited<ReturnType<typeof connectAction>>,
-) => Promise<T>, mode: "logged-out" | "replay" = "logged-out") {
+) => Promise<T>, mode: "logged-out" | "replay" = "logged-out", extension?: string) {
   const profile = await mkdtemp("/tmp/filler-chrome-action-");
   try {
     const { context: tabs, close } = await launch(mode, true, undefined, {
-      actionProfile: profile, viewport: { width: 1280, height: 3900 },
+      actionProfile: profile, extension, viewport: { width: 1280, height: 3900 },
     });
     try {
       const action = await connectAction(tabs, profile);

@@ -27,14 +27,19 @@ export async function versionsFor(
 export async function loadConfig() {
   const root = join(homedir(), ".pi/agent/filler-cut");
   const dataDir = process.env.FILLER_CUT_DATA ?? join(root, "data");
-  const rulesFile = process.env.FILLER_CUT_RULES ?? join(root, "engine/reader-rules.txt");
+  const rulesOverride = process.env.FILLER_CUT_RULES;
+  const rulesFile = Bun.file(rulesOverride ?? join(root, "engine/reader-rules.txt"));
   const port = Number(process.env.PORT ?? 18931);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
 
+  const readRules = rulesFile.bytes().catch((error: NodeJS.ErrnoException) => {
+    if (rulesOverride === undefined && error.code === "ENOENT") return new Uint8Array();
+    throw error;
+  });
   const [prompt, keyPrompt, rulesBytes] = await Promise.all([
     Bun.file(new URL("./prompt.txt", import.meta.url)).text(),
     Bun.file(new URL("./key-prompt.txt", import.meta.url)).text(),
-    Bun.file(rulesFile).bytes(),
+    readRules,
   ]);
   const [versions, keyVersions] = await Promise.all([
     versionsFor(prompt, rulesBytes),

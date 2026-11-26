@@ -9,7 +9,10 @@ test("build emits the MV3 extension with its bridge permission", async () => {
     await symlink(join(import.meta.dir, "../../src"), join(cwd, "src"), "dir");
     const build = Bun.spawn([process.execPath, join(import.meta.dir, "../../scripts/build.ts")], {
       cwd,
-      env: { ...process.env, BRIDGE_URL: "https://bridge.example:8443" },
+      env: {
+        ...process.env, BRIDGE_URL: "https://bridge.example:8443", FILLER_CUT_DEV: "0",
+        FILLER_CUT_AUTH_ORIGIN: "http://example.invalid:1234",
+      },
       stdout: "inherit",
       stderr: "inherit",
     });
@@ -20,12 +23,15 @@ test("build emits the MV3 extension with its bridge permission", async () => {
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.host_permissions).toEqual(["https://bridge.example/*"]);
     expect(manifest.content_scripts).toEqual([
-      { matches: ["https://x.com/*", "https://claude.com/*"], js: ["main.js"] },
+      { matches: ["https://x.com/*"], js: ["main.js"] },
     ]);
     expect(await Bun.file(join(dir, "main.js")).text()).not.toContain("fillerCutDebug");
     // The worker's name follows its content, so a browser restart cannot run a stale copy.
     expect(manifest.background.service_worker).toMatch(/^sw-[0-9a-f]{8}\.js$/);
-    expect(await Bun.file(join(dir, manifest.background.service_worker)).exists()).toBe(true);
+    const worker = await Bun.file(join(dir, manifest.background.service_worker)).text();
+    expect(worker).toContain("https://bridge.example:8443");
+    expect(worker).not.toContain("fillerCutTestChatGPT");
+    expect(worker).not.toContain("example.invalid");
     expect(await Bun.file(join(dir, "sw.js")).exists()).toBe(false);
   } finally {
     await rm(cwd, { recursive: true, force: true });

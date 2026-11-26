@@ -27,6 +27,7 @@ test("only fades when at least three sentences are left out", () => {
 });
 
 test("accepts a standalone SKIP only for checked pages", async () => {
+  expect(parseSelection("READ\nSKIP", 6, true)).toBeUndefined();
   expect(parseSelection("SKIP", 6)).toBeUndefined();
   expect(parseSelection('"SKIP"', 6, true)).toBeUndefined();
   expect(parseSelection("SKIP: project page", 6, true)).toBeUndefined();
@@ -59,7 +60,7 @@ test("formats the prompt and retries invalid output once", async () => {
   await expect(select(doc, "", "", async () => {
     attempts++;
     return "[]";
-  })).rejects.toThrow("Pi returned an invalid selection twice");
+  })).rejects.toThrow("invalid selection twice");
   expect(attempts).toBe(2);
 });
 

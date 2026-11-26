@@ -40,6 +40,13 @@ test("checked selections have their own cache keys and SKIP is cached", async ()
   };
   const server = await startBridge({ port: 0, dataDir, versions, keyVersions, prompt, keyPrompt, rules: "Rules" }, spawn);
   try {
+    const select = new URL("/select", server.url);
+    const request = { method: "POST", body: JSON.stringify(checked) };
+    for (const origin of ["https://example.com", "null", "http://127.0.0.1:1234"]) {
+      expect((await fetch(select, { ...request, headers: { origin } })).status).toBe(403);
+    }
+    expect(spawns).toBe(0);
+    expect((await fetch(select, { ...request, headers: { origin: `chrome-extension://${"a".repeat(32)}` } })).status).toBe(200);
     const post = async (request: typeof doc | typeof checked) => {
       const response = await fetch(new URL("/select", server.url), { method: "POST", body: JSON.stringify(request) });
       expect(response.status).toBe(200);

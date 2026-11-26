@@ -1,5 +1,6 @@
 import { builtinSite, builtinSites, grantedSites, inspectDocument, siteMatch } from "../background/sites";
-import { TOGGLE_COMMAND } from "../shared/config";
+import { CHATGPT_USAGE, issue } from "../shared/connection";
+import { assignedShortcut } from "../shared/shortcut";
 import type { PageSnapshot, PressTarget } from "../shared/page-snapshot";
 import { statusFeedback } from "../shared/status-copy";
 
@@ -13,6 +14,19 @@ const always = document.querySelector<HTMLInputElement>("#always")!;
 const sites = document.querySelector("#sites")!;
 const shortcut = document.querySelector<HTMLElement>("#shortcut")!;
 const change = document.querySelector<HTMLAnchorElement>("#change")!;
+
+const connect = document.querySelector<HTMLButtonElement>("#connect-action")!;
+const manage = document.querySelector<HTMLAnchorElement>("#manage")!;
+const enabledSites = document.querySelector<HTMLElement>("#enabled-sites")!;
+const settingsLink = document.querySelector<HTMLButtonElement>("#settings-link")!;
+const name = chrome.runtime.getManifest().name;
+document.title = name;
+document.querySelector("#name")!.textContent = name;
+manage.href = CHATGPT_USAGE;
+manage.onclick = () => { void chrome.runtime.sendMessage({ type: "manage-usage" }).catch(() => {}); };
+connect.onclick = settingsLink.onclick = () => {
+  void chrome.runtime.openOptionsPage().catch(() => showError("Couldn’t open settings. Open the extension’s options in Chrome."));
+};
 
 let tabId: number | undefined;
 let target: PressTarget | undefined;
@@ -32,7 +46,7 @@ function describe(page: PageSnapshot | undefined, enabled: boolean) {
     const controls = shortcutLabel ? `the switch or ${shortcutLabel}` : "the switch";
     return `Off on this site. Use ${controls} to cut this page once.`;
   }
-  if (!status) return "Use the switch to start Filler Cut here.";
+  if (!status) return `Use the switch to start ${name} here.`;
   if (status.kind === "cut") {
     const counts: string[] = [];
     if (status.removed) {
@@ -40,18 +54,37 @@ function describe(page: PageSnapshot | undefined, enabled: boolean) {
       counts.push(`${verb} ${status.removed} sentence${status.removed === 1 ? "" : "s"}`);
     }
     if (status.marks) counts.push(`${status.marks} key point${status.marks === 1 ? "" : "s"}`);
-    if (!status.lensOn) counts.unshift("Lens off");
+    if (!status.lensOn) counts.unshift("Cuts off");
     return counts.join(" · ") || "All removed sentences are expanded.";
   }
   const feedback = statusFeedback(status);
-  if (status.kind === "failed") return `${feedback.title} · ${status.reason}`;
+  if (status.kind === "failed" && status.reason === issue.usage) return feedback.title;
   return feedback.detail ? `${feedback.title}. ${feedback.detail}` : feedback.title;
 }
 
 async function refresh(id: number) {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [[tab], connection] = await Promise.all([
+    chrome.tabs.query({ active: true, currentWindow: true }),
+    chrome.runtime.sendMessage({ type: "connection" }),
+  ]);
   if (id !== refreshId) return;
   tabId = tab?.id;
+  const connected = !!connection?.engine;
+  const usingPlan = connection?.engine?.kind === "chatgpt";
+  const usage = usingPlan && connection.issue === issue.usage;
+  const signedOut = usingPlan && (connection.issue === issue.signedOut || connection.issue === issue.denied);
+  const keyRejected = connection?.engine?.kind === "key" && connection.issue === issue.invalidKey;
+  connect.hidden = connected && !signedOut && !keyRejected;
+  connect.textContent = signedOut ? "Sign in again" : keyRejected ? "Replace API key" : "Set up";
+  manage.hidden = !usage;
+  settingsLink.hidden = !connected;
+  enabledSites.hidden = change.hidden = !connected || usage || signedOut || keyRejected;
+  shortcut.hidden = change.hidden || !shortcutLabel;
+  if (!connected || usage || signedOut || keyRejected) {
+    lens.hidden = setting.hidden = true;
+    status.textContent = connected ? connection.issue : "Connect to start cutting pages.";
+    return;
+  }
   const [current, added] = await Promise.all([
     tabId === undefined ? undefined : inspectDocument(tabId),
     grantedSites(),
@@ -67,9 +100,9 @@ async function refresh(id: number) {
   const builtIn = !!url && builtinSite(url);
   const enabled = builtIn || (match !== undefined && added.includes(match));
   lens.hidden = setting.hidden = !match;
-  lens.setAttribute("aria-label", enabled ? "Filler Cut on enabled sites" : "Filler Cut on this page");
+  lens.setAttribute("aria-label", enabled ? "Cuts on enabled sites" : "Cuts on this page");
   lens.setAttribute("aria-checked", String(!!page?.mode && page.lensOn));
-  status.textContent = match ? describe(page, enabled) : "Filler Cut can't run on this page.";
+  status.textContent = match ? describe(page, enabled) : `${name} can’t run on this page.`;
   siteLabel.textContent = url ? `Always run on ${url.host}` : "";
   siteBuiltin.hidden = !builtIn;
   always.checked = enabled;
@@ -128,7 +161,7 @@ lens.addEventListener("click", async () => {
   showError("");
   lens.disabled = true;
   const pressed = await chrome.runtime.sendMessage({ type: "popup-press", ...target }).catch(() => false);
-  if (!pressed) showError("Couldn't run Filler Cut on this page.");
+  if (!pressed) showError(`Couldn’t run ${name} on this page.`);
   lens.disabled = false;
   reloadPopup();
 });
@@ -160,18 +193,16 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 chrome.tabs.onUpdated.addListener((id, change) => {
   if (id === tabId && (change.url || change.status === "complete")) reloadPopup();
 });
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.engine || changes.selectionIssue) reloadPopup();
+});
 chrome.permissions.onAdded.addListener(reloadPopup);
 chrome.permissions.onRemoved.addListener(reloadPopup);
 
-void chrome.commands.getAll().then((commands) => {
-  const key = commands.find(({ name }) => name === TOGGLE_COMMAND)?.shortcut;
-  if (key) {
-    const mac = navigator.platform.startsWith("Mac");
-    const symbols: Record<string, string> = { Alt: "⌥", MacCtrl: "⌃", Ctrl: "⌃", Shift: "⇧", Command: "⌘", Meta: "⌘" };
-    shortcutLabel = mac ? key.split("+").map((part) => symbols[part] ?? part).join("") : key;
-    shortcut.textContent = shortcutLabel;
-    shortcut.hidden = false;
-    change.textContent = "Change";
-    change.setAttribute("aria-label", "Change shortcut");
-  }
+void assignedShortcut().then((key) => {
+  if (!key) return;
+  shortcutLabel = key;
+  shortcut.textContent = key;
+  change.textContent = "Change";
+  change.setAttribute("aria-label", "Change shortcut");
 }).catch(() => showError("Couldn't read the shortcut.")).finally(reloadPopup);

@@ -1,12 +1,16 @@
 {
-  "name": "filler-cut",
+  "name": "unpad",
   "private": true,
   "type": "module",
   "scripts": {
     "bridge": "bun bridge/server.ts",
     "build": "bun scripts/build.ts",
     "check": "tsc --noEmit && bun test",
-    "verify": "bun tests/live/run.ts"
+    "verify": "bun tests/live/run.ts",
+    "zip": "bun scripts/zip.ts",
+    "icons": "bun scripts/icons.ts",
+    "verify:setup": "bun tests/live/setup.ts",
+    "bench:providers": "bun tests/live/provider-bench.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",
@@ -15,5 +19,7 @@
     "playwright": "^1.65.1",
     "pngjs": "^7.0.0",
     "typescript": "^5.9.0"
-  }
+  },
+  "version": "0.4.0",
+  "license": "AGPL-3.0-only"
 }

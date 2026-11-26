@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="options.css">
+  <script src="options.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1 id="name"></h1>
+    <p id="intro">Read the key points and expand the rest when you need it.</p>
+    <section id="connect" hidden aria-labelledby="connect-title">
+      <h2 id="connect-title">Connect</h2>
+      <p id="problem" role="status" hidden></p>
+      <a id="usage-primary" class="primary" target="_blank" rel="noreferrer" hidden>Manage usage</a>
+      <div id="choose">
+        <p>Use your ChatGPT plan or connect an API key.</p>
+        <select id="accounts" aria-label="ChatGPT account" hidden></select>
+        <button id="chatgpt" class="primary" type="button">Continue with ChatGPT</button>
+        <button id="key-path" class="quiet" type="button">Use an API key instead</button>
+      </div>
+      <form id="key-form" hidden>
+        <label for="key">API key</label>
+        <input id="key" type="password" autocomplete="off" spellcheck="false" required>
+        <p id="recognized" role="status">Supports Anthropic, OpenAI, Google Gemini, and OpenRouter.</p>
+        <p><a id="get-key" target="_blank" rel="noreferrer">Get a free Gemini API key</a></p>
+        <button id="connect-key" class="primary" type="submit" disabled>Connect</button>
+        <button id="back" class="quiet" type="button">Back</button>
+      </form>
+      <div id="connected" hidden>
+        <p id="connection-name"></p>
+        <a id="usage" target="_blank" rel="noreferrer" hidden>Manage usage</a>
+        <button id="replace-key" class="primary" type="button" hidden>Replace API key</button>
+        <button id="disconnect" class="quiet" type="button">Disconnect</button>
+      </div>
+    </section>
+    <section id="try" hidden aria-labelledby="try-title">
+      <h2 id="try-title">Try it on an article</h2>
+      <p id="try-copy"></p>
+      <a id="try-link" class="primary" target="_blank" rel="noreferrer">Open a sample article</a>
+      <button id="shortcuts" class="quiet" type="button">Keyboard shortcuts</button>
+    </section>
+    <section id="personalize" hidden aria-labelledby="about-title">
+      <h2 id="about-title"><label for="about">About you</label></h2>
+      <p id="about-help">Optional. Say what you already know well or what you’re working on. Your notes go to the service you connect.</p>
+      <form id="about-form">
+        <textarea id="about" rows="3" maxlength="4000" aria-describedby="about-help"></textarea>
+        <button class="secondary" type="submit">Save</button>
+        <span id="saved" class="muted" role="status"></span>
+      </form>
+    </section>
+    <details id="advanced" hidden>
+      <summary>Advanced</summary>
+      <form id="model-form" hidden>
+        <label for="model">Model</label>
+        <input id="model" type="text" maxlength="150" required>
+        <select id="plan-model" aria-label="ChatGPT model" hidden></select>
+        <button class="secondary" type="submit">Save model</button>
+      </form>
+      <form id="bridge-form">
+        <label for="bridge">Bridge URL</label>
+        <input id="bridge" type="url" placeholder="http://127.0.0.1:18931" required>
+        <button class="secondary" type="submit">Use bridge</button>
+      </form>
+    </details>
+  </main>
+</body>
+</html>

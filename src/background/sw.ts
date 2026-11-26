@@ -1,34 +1,74 @@
-import { BRIDGE_URL, TOGGLE_COMMAND } from "../shared/config";
+import { TOGGLE_COMMAND } from "../shared/config";
+import { hostPermission, issue } from "../shared/connection";
 import { sha256 } from "../shared/keys";
-import { documentRoute, type PageSnapshot } from "../shared/page-snapshot";
-import { parseErrorResponse, parseEventsRequest, parseSelectRequest, parseSelectResponse } from "../shared/wire";
-
+import { documentRoute, type PageSnapshot, type PressTarget } from "../shared/page-snapshot";
+import { parseEventsRequest, parseSelectRequest } from "../shared/wire";
+import { cancelChatGPT } from "./chatgpt";
 import { chromeEventQueue } from "./events";
+import { initialEngine, readPreferences } from "./preferences";
+import { bridgeSelector, localSelector, type Selector } from "./selectors";
+import { providers } from "./providers";
+import { createSettings } from "./settings";
 import { activateDocument, addSites, deactivateSites, forgetSites, grantedSites, inspectDocument, optionalSiteMatches, ownsShortcut, restoreSites, siteEnabled } from "./sites";
 
-export async function selectDoc(body: unknown, fetcher: (input: URL, init: RequestInit) => Promise<Response> = fetch) {
+export async function selectDoc(body: unknown, select: Selector) {
   const request = parseSelectRequest(body);
-  if (!request) return { error: "Invalid document" };
+  if (!request) return { error: issue.failed };
   try {
-    const response = await fetcher(new URL("/select", BRIDGE_URL), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(45_000),
-    });
-    const answer: unknown = await response.json();
-    if (!response.ok) return parseErrorResponse(answer) ?? { error: "Selection failed" };
-    const picks = parseSelectResponse(answer);
-    if (!picks || (picks.selection.kind === "keep" && picks.selection.keep.some((id) => id > request.sentences.length))) {
-      return { error: "Invalid selection response" };
-    }
-    return picks;
+    return await select(request);
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Selection failed" };
+    const message = error instanceof Error ? error.message : "";
+    const known = Object.values(issue).find((text) => text === message);
+    return { error: known ?? issue.failed };
   }
 }
 
 if (typeof chrome !== "undefined") {
+  const trusted = Promise.all([
+    chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }),
+    chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }),
+  ]);
+  if (process.env.FILLER_CUT_DEV === "1") {
+    Object.assign(globalThis, {
+      async fillerCutTestChatGPT(token: string) {
+        await trusted;
+        await chrome.storage.session.set({ chatgptAccess: { sessionId: "dev", token, expiresAt: Date.now() + 15 * 60_000 } });
+        await chrome.storage.local.set({ engine: { kind: "chatgpt", model: providers.chatgpt.model } });
+      },
+    });
+  }
+  const optionsUrl = chrome.runtime.getURL("options.html");
+  const callbackUrl = chrome.runtime.getURL("callback.html");
+  const settings = createSettings(trusted);
+  chrome.tabs.onRemoved.addListener((tabId) => { void cancelChatGPT(tabId).catch(() => {}); });
+
+  async function pushPreferences(changes: Record<string, chrome.storage.StorageChange>) {
+    const session = changes.chatgptSession;
+    const sessionId = (session?.newValue as { id?: string } | undefined)?.id;
+    const signedIn = !!sessionId && sessionId !== (session?.oldValue as { id?: string } | undefined)?.id;
+    const restart = !!(signedIn || changes.engine || changes.about);
+    if (!changes.lensOn && !restart) return;
+    const { engine } = await readPreferences();
+    const { lensOn } = await chrome.storage.local.get("lensOn");
+    const message = { type: "reading-preferences", connected: !!engine, lensOn: lensOn !== false,
+      restart };
+    const tabs = await chrome.tabs.query({});
+    await Promise.all(tabs.flatMap(({ id }) =>
+      id === undefined ? [] : chrome.tabs.sendMessage(id, message, { frameId: 0 }).catch(() => {})));
+  }
+  chrome.storage.local.onChanged.addListener((changes) => { void pushPreferences(changes).catch(() => {}); });
+
+  async function press(target: PressTarget, existingScript = false) {
+    await trusted;
+    if ((await readPreferences()).engine) return activateDocument(target, setLens, existingScript);
+    const { tabId, documentId, url } = target;
+    const show = () => chrome.tabs.sendMessage(tabId, { type: "needs-setup", url }, { documentId }).catch(() => false);
+    if (!await show() && !existingScript) {
+      await chrome.scripting.executeScript({ target: { tabId, documentIds: [documentId] }, files: ["page.js"] });
+      await show();
+    }
+  }
+
   let toggles = Promise.resolve();
   function setLens(on?: boolean) {
     const write = toggles.then(async () => {
@@ -47,9 +87,11 @@ if (typeof chrome !== "undefined") {
 
   chrome.commands.onCommand.addListener((name, tab) => {
     if (name !== TOGGLE_COMMAND || tab?.id === undefined) return;
-    void inspectDocument(tab.id).then((target) => {
+    void inspectDocument(tab.id).then(async (target) => {
       if (target && (!tab.url || documentRoute(target.url) === documentRoute(tab.url))) {
-        return activateDocument(target, setLens);
+        return press(target);
+      } else if (!target && !(await readPreferences()).engine) {
+        await chrome.runtime.openOptionsPage();
       }
     }).catch(console.warn);
   });
@@ -62,10 +104,40 @@ if (typeof chrome !== "undefined") {
   chrome.runtime.onInstalled.addListener(({ reason, previousVersion }) => {
     const legacy = previousVersion === "0.0.2" || previousVersion === "0.0.3";
     void changeSites(reason === "update" && legacy ? forgetSites : restoreSites);
+    if (reason === "install" && !initialEngine) void chrome.tabs.create({ url: optionsUrl });
   });
   chrome.runtime.onStartup.addListener(() => { void changeSites(restoreSites); });
-  const queueEvents = chromeEventQueue();
+  const queueEvents = new Map<string, ReturnType<typeof chromeEventQueue>>();
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (message?.type === "reading-preferences" && sender.frameId === 0) {
+      void trusted.then(async () => {
+        const { engine } = await readPreferences();
+        const { lensOn } = await chrome.storage.local.get("lensOn");
+        reply({ connected: !!engine, lensOn: lensOn !== false });
+      }).catch(() => reply({ connected: false }));
+      return true;
+    }
+    if (sender.url === optionsUrl || sender.url === chrome.runtime.getURL("popup.html")) {
+      if (message?.type === "connection") {
+        void trusted.then(settings.status).then(reply, () => reply({}));
+        return true;
+      }
+      if (message?.type === "manage-usage") {
+        void chrome.storage.session.get("selectionIssue").then(async ({ selectionIssue }) => {
+          if (selectionIssue === issue.usage) await chrome.storage.session.remove("selectionIssue");
+        }).then(reply, () => reply(false));
+        return true;
+      }
+      if (sender.url === optionsUrl && message?.type === "settings") {
+        void settings.change(message).then(reply, () => reply({ error: issue.failed }));
+        return true;
+      }
+    }
+    if (sender.url?.split("#", 1)[0] === callbackUrl && (sender.frameId === undefined || sender.frameId === 0) && sender.tab?.id !== undefined &&
+        message?.type === "chatgpt-callback" && typeof message.query === "string") {
+      void settings.callback(sender.tab.id, message.query).then(reply, () => reply({ error: issue.auth }));
+      return true;
+    }
     if (message?.type === "hash" && typeof message.data === "string") {
       void sha256(message.data).then(reply);
       return true;
@@ -74,7 +146,7 @@ if (typeof chrome !== "undefined") {
       if (message?.type === "popup-press" && Number.isInteger(message.tabId) &&
         typeof message.url === "string" && typeof message.documentId === "string") {
         const { tabId, documentId, url } = message;
-        void activateDocument({ tabId, documentId, url }, setLens).then(() => reply(true), () => reply(false));
+        void press({ tabId, documentId, url }).then(() => reply(true), () => reply(false));
         return true;
       }
       if (message?.type === "remove-site" && typeof message.match === "string" && optionalSiteMatches([message.match]).length) {
@@ -105,7 +177,7 @@ if (typeof chrome !== "undefined") {
       const target = { tabId: tab.id, documentId, url: message.url };
       // A browser shortcut and a page key event must never both toggle the lens.
       void ownsShortcut().then(async (assigned) => {
-        if (!assigned) await activateDocument(target, setLens, true);
+        if (!assigned) await press(target, true);
       }).then(() => reply(true), () => reply(false));
       return true;
     }
@@ -116,13 +188,49 @@ if (typeof chrome !== "undefined") {
     if (message?.type === "events") {
       const request = parseEventsRequest(message);
       if (!request?.events.length) return;
-      void queueEvents(request.events).then(() => reply(true), () => reply(false));
+      void trusted.then(async () => {
+        const { engine } = await readPreferences();
+        if (engine?.kind !== "bridge" || message.bridge !== await sha256(engine.url) ||
+            !await chrome.permissions.contains({ origins: [hostPermission(engine.url)] })) return;
+        let queue = queueEvents.get(engine.url);
+        if (!queue) queueEvents.set(engine.url, queue = chromeEventQueue(engine.url));
+        await queue(request.events);
+      }).then(() => reply(true), () => reply(false));
       return true;
     }
-    if (message?.type !== "select") return;
+    if (message?.type !== "select" || sender.frameId !== 0 || sender.tab?.id === undefined) return;
     void (async () => {
       if (message.doc?.check && !await siteEnabled(sender.url)) return { error: "Site is no longer enabled" };
-      return selectDoc(message.doc);
+      await trusted;
+      const { engine, about, sessionId } = await readPreferences();
+      if (!engine) return { error: issue.setup };
+      if (engine.kind === "bridge" && !await chrome.permissions.contains({ origins: [hostPermission(engine.url)] })) {
+        return { error: issue.permission };
+      }
+      if (engine.kind === "chatgpt") {
+        const { selectionIssue, issueAt } = await chrome.storage.session.get(["selectionIssue", "issueAt"]);
+        if (selectionIssue === issue.usage && typeof issueAt === "number" && Date.now() - issueAt < 60_000) {
+          return { error: issue.usage };
+        }
+        if (selectionIssue === issue.usage) await chrome.storage.session.remove(["selectionIssue", "issueAt"]);
+      }
+
+      const selector = engine.kind === "bridge" ? bridgeSelector(engine.url) : localSelector(engine, about, sessionId);
+      const result = await selectDoc(message.doc, selector);
+      if (engine.kind !== "bridge") {
+        const latest = await readPreferences();
+        if (latest.about === about && JSON.stringify(latest.engine) === JSON.stringify(engine) &&
+            (engine.kind !== "chatgpt" || sessionId === latest.sessionId || !latest.sessionId)) {
+          const current = (await chrome.storage.session.get("selectionIssue")).selectionIssue;
+          if ("error" in result && (current !== issue.usage || result.error === issue.usage)) {
+            await chrome.storage.session.set({ selectionIssue: result.error, issueAt: Date.now() });
+          } else if (!("error" in result) && current !== issue.usage) {
+            await chrome.storage.session.remove(["selectionIssue", "issueAt"]);
+          }
+        }
+      }
+      return engine.kind === "bridge" && !("error" in result)
+        ? { ...result, bridge: await sha256(engine.url) } : result;
     })().then(reply, () => reply({ error: "Selection failed" }));
     return true;
   });
