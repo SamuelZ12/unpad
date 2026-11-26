@@ -11,6 +11,7 @@ const answer = { type: "picks-arrived", docKey: doc.key, cacheKey: "picks" as Ca
 
 test("a scanned feed without eligible posts has nothing to cut", () => {
   expect(pageStatus(empty, true)).toEqual({ kind: "nothing-to-cut" });
+  expect(pageStatus(waiting, true, [])).toEqual({ kind: "nothing-to-cut" });
 });
 
 test("an article reports pending and failed selection", () => {

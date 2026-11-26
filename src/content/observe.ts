@@ -35,7 +35,7 @@ export function observePage(scan: () => void, navigate: () => void, onMutations:
     changed(records);
     urlChanged();
   });
-  const xAttributes = location.hostname === "x.com" ? ["href", "aria-current"] : [];
+  const xAttributes = location.hostname === "x.com" ? ["href", "aria-current", "data-testid", "role"] : [];
   observer.observe(document.documentElement, {
     subtree: true, childList: true, characterData: true,
     attributes: true, attributeFilter: ["hidden", "aria-hidden", "class", "contenteditable", ...xAttributes],

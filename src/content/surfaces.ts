@@ -28,6 +28,24 @@ const xShowMore = "[data-testid=tweet-text-show-more-link]";
 const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
 
+function quoteCard(element: Element, tweet: Element) {
+  const card = element.closest("[role=link]:not(a)");
+  return card && card !== tweet && tweet.contains(card) ? card : null;
+}
+
+function statusId(tweet: Element) {
+  const permalink = [...tweet.querySelectorAll<HTMLAnchorElement>(
+    'a[href*="/status/"]:has(time), a[aria-current=page][href*="/status/"]',
+  )].find((anchor) => anchor.closest("article") === tweet && !quoteCard(anchor, tweet));
+  return permalink?.pathname.match(/\/status\/(\d+)/)?.[1];
+}
+
+function truncated(post: Element, tweet: Element) {
+  const card = quoteCard(post, tweet);
+  return [...(card ?? tweet).querySelectorAll(xShowMore)].some((control) =>
+    control.closest("article") === tweet && quoteCard(control, tweet) === card && !control.closest(privateText));
+}
+
 function xSurfaces(document: Document, path: string): SurfaceDoc[] {
   const docs: SurfaceDoc[] = [];
   for (const article of document.querySelectorAll(`main ${xAppArticle}`)) {
@@ -37,20 +55,15 @@ function xSurfaces(document: Document, path: string): SurfaceDoc[] {
     const title = heading && !heading.closest(privateText) ? genericText(heading, (node) => node.data) : "";
     const blocks = [...article.querySelectorAll("[data-block=true]")]
       .filter((block) => !block.closest(genericNonProse) && !block.querySelector(prose));
-    docs.push({ root: article, title, blocks, surface: "x-article" });
+    const id = statusId(tweet);
+    docs.push({ root: article, title, blocks, surface: "x-article", identity: id ? `${id}:article` : undefined });
   }
   for (const post of document.querySelectorAll(`main ${xPostBody}`)) {
     const tweet = post.closest(xTweet);
-    if (!tweet || post.closest(privateText)) continue;
-    const next = post.nextElementSibling;
-    const neighbor = next?.matches(xPostBody) || next?.querySelector(xPostBody) ? null : next;
-    const more = post.querySelector(xShowMore) ??
-      (neighbor?.matches(xShowMore) ? neighbor : neighbor?.querySelector(xShowMore));
-    if (more && !more.closest(privateText)) continue;
-    const permalink = tweet.querySelector<HTMLAnchorElement>('a[href*="/status/"]:has(time), a[aria-current=page][href*="/status/"]');
-    const id = permalink?.pathname.match(/\/status\/(\d+)/)?.[1];
-    const card = post.parentElement?.closest("[role=link]");
-    const identity = id ? `${id}:${card && card !== tweet && tweet.contains(card) ? "quote" : "post"}` : null;
+    if (!tweet || post.closest(`${privateText}, ${xAppArticle}`) || truncated(post, tweet)) continue;
+    const id = statusId(tweet);
+    const kind = quoteCard(post, tweet) ? "quote" : "post";
+    const identity = id ? `${id}:${kind}` : null;
     docs.push({ root: post, title: "", blocks: [post], surface: "x-post", identity });
   }
 
@@ -64,13 +77,18 @@ function xSurfaces(document: Document, path: string): SurfaceDoc[] {
   if (!tweet) return docs;
   const body = tweet.querySelector(xPublicArticle);
   if (body) {
-    const title = collapse(tweet.querySelector("h1")?.textContent ?? "");
-    const blocks = [...body.querySelectorAll(prose)].filter((block) => !block.closest(nonProse) && !block.querySelector(prose));
+    if (body.closest(privateText)) return docs;
+    const heading = tweet.querySelector("h1");
+    const title = heading && !heading.closest(privateText) ? genericText(heading, (node) => node.data) : "";
+    const blocks = [...body.querySelectorAll(prose)]
+      .filter((block) => !block.closest(genericNonProse) && !block.querySelector(prose));
     docs.push({ root: body, title, blocks, surface: "x-article" });
     return docs;
   }
   const post = tweet.querySelector("div[dir=auto][lang]");
-  if (post && !post.matches(xPostBody)) docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
+  if (post && !post.closest(privateText) && !truncated(post, tweet) && !docs.some(({ root }) => root === post)) {
+    docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
+  }
   return docs;
 }
 

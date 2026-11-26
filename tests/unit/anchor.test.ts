@@ -112,15 +112,18 @@ test("X finds the public permalink beside app replies and ignores it on profiles
     await page.goto(url);
     const result = await page.evaluate(async (source) => {
       const { extract } = await import(source) as typeof import("../../src/content/anchor");
-      const kinds = async (url: URL) => (await extract(document, url)).map(({ doc }) => doc.surface);
-      const status = await kinds(new URL(location.href));
+      document.querySelector("main article h1")!.insertAdjacentHTML("beforeend", "<span hidden>Hidden title.</span>");
+      document.querySelector("[data-article-body-html]")!.insertAdjacentHTML("beforeend", "<p contenteditable>Private edit.</p>");
+      const status = (await extract(document, new URL(location.href))).map(({ doc }) => doc);
       const heading = document.createElement("a");
       heading.href = "/alexandr_wang";
       heading.setAttribute("aria-current", "page");
       document.querySelector("main article")!.prepend(heading);
-      return { status, profile: await kinds(new URL(heading.href)) };
+      const profile = (await extract(document, new URL(heading.href))).map(({ doc }) => doc.surface);
+      return { status: status.map((doc) => doc.surface), profile, privateText: JSON.stringify(status).includes("Hidden title.") ||
+        JSON.stringify(status).includes("Private edit.") };
     }, module);
-    expect(result).toEqual({ status: ["x-post", "x-article"], profile: ["x-post"] });
+    expect(result).toEqual({ status: ["x-post", "x-article"], profile: ["x-post"], privateText: false });
   });
 }, 15_000);
 

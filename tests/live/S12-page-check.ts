@@ -71,9 +71,16 @@ export default async function S12PageCheck(context: CheckContext) {
     const beforeArticle = (await bridge.requests()).length;
     await addFromPopup(page, action);
     const article = await waitForState(page, "faded");
-    const response = await bridge.waitForRequest(beforeArticle);
+    const match = await poll(async () => {
+      for (const response of (await bridge.requests()).slice(beforeArticle)) {
+        if (!response.result) continue;
+        const entry = await cacheEntry(context, response.cacheKey);
+        if (entry.check?.url === articleLocation) return { response, checked: entry };
+      }
+    }, Boolean, 5000);
+    assert.ok(match);
+    const { response, checked } = match;
     assert.equal(response.result, "keep");
-    const checked = await cacheEntry(context, response.cacheKey);
     assert.deepEqual(checked.check, { url: articleLocation });
     return `README ${entry.sentences.length} sentences, SKIP in ${Math.round(skipped.ms)} ms (${skipped.source}, ${skipped.piCalls} Pi calls), ${gitHubSelects.length} selects across add and reload, including a reload cache hit, 0 changed prose pixels and empty badge; profile ${profileLayout.doc.sentences.length} candidate sentences, 0 select messages or changed prose pixels; checked article ${article.faded}/${checked.sentences.length} faded (${response.source})`;
   }));

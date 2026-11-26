@@ -70,6 +70,7 @@ function anchor(block: Element, { nodes, text }: ReturnType<typeof readBlock>) {
 export function createExtractor() {
   const posts = new WeakMap<Element, {
     identity?: string;
+    anonymous: boolean;
     source: ReturnType<typeof readBlock>;
     result: Promise<AnchoredDoc | undefined>;
   }>();
@@ -79,7 +80,8 @@ export function createExtractor() {
   ): Promise<AnchoredDoc[]> {
     const docs = surfaces(document, url, checkArticle, read).map(({ root, surface, title, blocks, generic, identity }) => {
       const previous = posts.get(root);
-      const keyPrefix = identity === null ? previous?.identity ?? randomId() : identity;
+      const anonymous = identity === null;
+      const keyPrefix = anonymous ? (previous?.anonymous ? previous.identity : randomId()) : identity;
       async function build(spans: ReturnType<typeof anchor>): Promise<AnchoredDoc | undefined> {
         if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
         const sentences = spans.map(({ text }) => text);
@@ -94,7 +96,7 @@ export function createExtractor() {
         return previous.result;
       }
       const result = build(anchor(root, source));
-      posts.set(root, { identity: keyPrefix, source, result });
+      posts.set(root, { identity: keyPrefix, anonymous, source, result });
       void result.catch(() => { if (posts.get(root)?.result === result) posts.delete(root); });
       return result;
     });

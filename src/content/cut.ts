@@ -2,7 +2,7 @@ import { rangeOf, type SentenceAnchor, type TextSlice } from "./anchor";
 import type { DocKey, SentenceId } from "../shared/types";
 import type { RunEvent } from "../core/state";
 import { isEditing } from "./keys";
-import { xPostBody } from "./surfaces";
+import { textWalker, xPostBody } from "./surfaces";
 
 export const markerSelector = "[data-filler-cut-marker]";
 const restoredSelector = "[data-filler-cut-restored]";
@@ -23,7 +23,7 @@ interface ProjectedText {
 
 function* postRunSlices(block: Element, slices: readonly TextSlice[]): Iterable<TextSlice> {
   // X uses pre-wrapped text. Remove whitespace between sentences even across text nodes.
-  const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const walker = textWalker(block, false, true);
   let previous: TextSlice | undefined;
   for (const slice of slices) {
     if (previous && previous.node !== slice.node &&
