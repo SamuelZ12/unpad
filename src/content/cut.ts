@@ -32,7 +32,9 @@ function* postRunSlices(block: Element, slices: readonly TextSlice[]): Iterable<
       if (!previous.node.data.slice(previous.end).trim()) {
         yield { node: previous.node, start: previous.end, end: previous.node.length };
       }
-      for (let node = walker.nextNode() as Text | null; node && node !== slice.node; node = walker.nextNode() as Text | null) {
+      for (let node = walker.nextNode() as Text | null;
+        node && node.compareDocumentPosition(slice.node) & Node.DOCUMENT_POSITION_FOLLOWING;
+        node = walker.nextNode() as Text | null) {
         if (!node.data.trim()) yield { node, start: 0, end: node.length };
       }
       if (!slice.node.data.slice(0, slice.start).trim()) yield { node: slice.node, start: 0, end: slice.start };

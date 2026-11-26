@@ -74,8 +74,8 @@ export default async function S12PageCheck(context: CheckContext) {
     const match = await poll(async () => {
       for (const response of (await bridge.requests()).slice(beforeArticle)) {
         if (!response.result) continue;
-        const entry = await cacheEntry(context, response.cacheKey);
-        if (entry.check?.url === articleLocation) return { response, checked: entry };
+        const entry = await cacheEntry(context, response.cacheKey).catch(() => undefined);
+        if (entry?.check?.url === articleLocation) return { response, checked: entry };
       }
     }, Boolean, 5000);
     assert.ok(match);

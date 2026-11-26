@@ -81,11 +81,12 @@ export function createExtractor() {
     const docs = surfaces(document, url, checkArticle, read).map(({ root, surface, title, blocks, generic, identity }) => {
       const previous = posts.get(root);
       const anonymous = identity === null;
-      const keyPrefix = anonymous ? (previous?.anonymous ? previous.identity : randomId()) : identity;
+      let keyPrefix = identity ?? undefined;
+      if (anonymous) keyPrefix = previous?.anonymous ? previous.identity : randomId();
       async function build(spans: ReturnType<typeof anchor>): Promise<AnchoredDoc | undefined> {
         if (spans.length < MIN_SENTENCES || spans.length > MAX_SENTENCES) return;
         const sentences = spans.map(({ text }) => text);
-        const key = await docKey(keyPrefix ?? title, sentences);
+        const key = await docKey(keyPrefix === undefined ? title : JSON.stringify([keyPrefix, title]), sentences);
         return { root, doc: { key, surface, title, sentences }, sentences: spans.map(({ sentence }) => sentence) };
       }
 

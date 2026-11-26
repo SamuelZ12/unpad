@@ -60,8 +60,9 @@ test("signed-in X finds each post body on timeline and status routes", async () 
         const preview = document.querySelector("#long [data-testid=tweetText]")!;
         // A preview can reach the sentence threshold before the user expands it.
         preview.textContent = "Six sentences. Still truncated. Three now. And four. Five more. The last.";
-        const before = await extract(document, url);
         const button = document.querySelector<HTMLButtonElement>("#long button")!;
+        button.setAttribute("role", "link");
+        const before = await extract(document, url);
         button.click();
         button.hidden = true;
         const wrapper = document.createElement("div");

@@ -29,8 +29,11 @@ const xAppArticle = "[data-testid=twitterArticleRichTextView]";
 const xPublicArticle = "[data-article-body-html]";
 
 function quoteCard(element: Element, tweet: Element) {
-  const card = element.closest("[role=link]:not(a)");
-  return card && card !== tweet && tweet.contains(card) ? card : null;
+  for (let card = element.parentElement?.closest("[role=link]"); card && card !== tweet && tweet.contains(card);
+    card = card.parentElement?.closest("[role=link]")) {
+    if (card.querySelector(xPostBody)) return card;
+  }
+  return null;
 }
 
 function statusId(tweet: Element) {
@@ -75,9 +78,9 @@ function xSurfaces(document: Document, path: string): SurfaceDoc[] {
       anchor.closest("article") === article && anchor.pathname.toLowerCase() === status &&
       (!!anchor.querySelector("time") || anchor.matches('[aria-current="page"]'))));
   if (!tweet) return docs;
-  const body = tweet.querySelector(xPublicArticle);
+  const owned = (root: Element) => root.closest("article") === tweet && !root.closest(privateText);
+  const body = [...tweet.querySelectorAll(xPublicArticle)].find(owned);
   if (body) {
-    if (body.closest(privateText)) return docs;
     const heading = tweet.querySelector("h1");
     const title = heading && !heading.closest(privateText) ? genericText(heading, (node) => node.data) : "";
     const blocks = [...body.querySelectorAll(prose)]
@@ -85,8 +88,8 @@ function xSurfaces(document: Document, path: string): SurfaceDoc[] {
     docs.push({ root: body, title, blocks, surface: "x-article" });
     return docs;
   }
-  const post = tweet.querySelector("div[dir=auto][lang]");
-  if (post && !post.closest(privateText) && !truncated(post, tweet) && !docs.some(({ root }) => root === post)) {
+  const post = [...tweet.querySelectorAll("div[dir=auto][lang]")].find(owned);
+  if (post && !truncated(post, tweet) && !docs.some(({ root }) => root === post)) {
     docs.push({ root: post, title: "", blocks: [post], surface: "x-post" });
   }
   return docs;

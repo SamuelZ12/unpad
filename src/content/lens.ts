@@ -146,13 +146,17 @@ function start() {
   async function requestPicks(entry: DocState, check: SelectRequest["check"]) {
     const { doc } = entry;
     const isCurrent = () => state.docs.get(doc.key) === entry && href === location.href;
-    async function validateAnchors() {
-      if (doc.surface !== "x-post") return;
-      mutate(() => {});
-      while (isCurrent() && !scanError && (scanning || scannedMutation !== mutationVersion)) {
-        if (!scanning && !scan()) break;
+    async function report(event: PageEvent) {
+      if (doc.surface === "x-post") {
+        mutate(() => {});
+        if (!scanning && scannedMutation !== mutationVersion) void scan();
         await finishScan();
+        if (isCurrent() && (scanError || scannedMutation !== mutationVersion)) {
+          state = reduce(state, event);
+          return;
+        }
       }
+      if (isCurrent()) dispatch(event);
     }
     try {
       // A short page gets no marks, so it keeps the fade-only cache entry.
@@ -162,14 +166,12 @@ function start() {
       const answer: unknown = await chrome.runtime.sendMessage({ type: "select", doc: request });
       const picks = parseSelectResponse(answer);
       if (!picks) throw new Error(parseErrorResponse(answer)?.error ?? "Invalid selection response");
-      await validateAnchors();
       if (!isCurrent()) return;
       const { bridge } = answer as { bridge?: string };
       if (typeof bridge === "string") bridgeForDoc.set(doc.key, bridge);
-      dispatch({ type: "picks-arrived", docKey: doc.key, ...picks });
+      await report({ type: "picks-arrived", docKey: doc.key, ...picks });
     } catch (error) {
-      await validateAnchors();
-      if (isCurrent()) dispatch({ type: "picks-failed", docKey: doc.key, reason: error instanceof Error ? error.message : "Selection failed" });
+      if (isCurrent()) await report({ type: "picks-failed", docKey: doc.key, reason: error instanceof Error ? error.message : "Selection failed" });
     }
   }
 
@@ -195,7 +197,7 @@ function start() {
     const check = mode === "site" && usesGenericSurface(url) ? { url: url.origin + url.pathname } : undefined;
     const readAt = mutate(() => mutationVersion);
     const docs = await extract(document, url, !!check, projection.read);
-    if (!current()) return;
+    if (!current() || (url.hostname === "x.com" && readAt !== mutate(() => mutationVersion))) return;
 
     scanError = undefined;
     scanned = true;
