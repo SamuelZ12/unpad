@@ -60,4 +60,4 @@ Load `dist/extension` in Chrome. The zip command uses the system `zip` tool to c
 
 ## License
 
-Unpad is free and open source under the [GNU Affero General Public License v3.0](LICENSE).
+Unpad is free and open source under the [MIT License](LICENSE). The license does not cover third-party writing in the [test fixtures](tests/fixtures/README.md).
